@@ -1,0 +1,336 @@
+use serde::Deserialize;
+use serde_json::{Map, Value};
+
+use crate::auth::{AUTHORIZATION_HEADER, AccessToken};
+use crate::client::Client;
+use crate::config::{Account, Environment};
+use crate::error::{Error, Result};
+use crate::http::{HttpClient, Request, Response};
+use crate::rest::{ApiResponseStatus, CONTENT_TYPE_JSON};
+
+pub(crate) const APP_KEY_HEADER: &str = "appkey";
+pub(crate) const APP_SECRET_HEADER: &str = "appsecret";
+pub(crate) const TR_ID_HEADER: &str = "tr_id";
+pub(crate) const CUSTTYPE_HEADER: &str = "custtype";
+pub(crate) const TR_CONT_HEADER: &str = "tr_cont";
+pub(crate) const PERSONAL_CUSTOMER_TYPE: &str = "P";
+pub(crate) const CANO: &str = "CANO";
+pub(crate) const ACNT_PRDT_CD: &str = "ACNT_PRDT_CD";
+
+#[derive(Clone, Debug, Default, Eq, PartialEq)]
+pub struct Continuation {
+    pub tr_cont: Option<String>,
+    pub ctx_area_fk: Option<String>,
+    pub ctx_area_nk: Option<String>,
+}
+
+impl Continuation {
+    pub fn from_response(response: &Response) -> Self {
+        Self {
+            tr_cont: optional_header(response, TR_CONT_HEADER),
+            ctx_area_fk: optional_header(response, "ctx_area_fk"),
+            ctx_area_nk: optional_header(response, "ctx_area_nk"),
+        }
+    }
+
+    pub fn has_next(&self) -> bool {
+        matches!(self.tr_cont.as_deref(), Some("M" | "F"))
+    }
+
+    pub fn next_request(&self) -> Option<Self> {
+        self.has_next().then(|| Self {
+            tr_cont: Some("N".to_string()),
+            ctx_area_fk: self.ctx_area_fk.clone(),
+            ctx_area_nk: self.ctx_area_nk.clone(),
+        })
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OrderSide {
+    Buy,
+    Sell,
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub enum OverseasExchange {
+    Nasdaq,
+    Nyse,
+    Amex,
+}
+
+impl OverseasExchange {
+    pub const fn as_str(self) -> &'static str {
+        match self {
+            Self::Nasdaq => "NASD",
+            Self::Nyse => "NYSE",
+            Self::Amex => "AMEX",
+        }
+    }
+
+    pub fn from_kis_code(value: &str) -> Result<Self> {
+        match value {
+            "NASD" => Ok(Self::Nasdaq),
+            "NYSE" => Ok(Self::Nyse),
+            "AMEX" => Ok(Self::Amex),
+            _ => Err(Error::config("only NASD, NYSE, and AMEX are supported")),
+        }
+    }
+}
+
+#[derive(Clone, Debug, Eq, PartialEq)]
+pub struct OverseasStockCode(String);
+
+impl OverseasStockCode {
+    pub fn new(value: impl Into<String>) -> Result<Self> {
+        let value = value.into();
+
+        if value.is_empty() {
+            return Err(Error::config("overseas stock code is empty"));
+        }
+
+        Ok(Self(value))
+    }
+
+    pub fn as_str(&self) -> &str {
+        &self.0
+    }
+}
+
+#[derive(Clone, Copy, Debug, Eq, PartialEq)]
+pub(crate) struct Endpoint {
+    pub path: &'static str,
+    pub tr_id: &'static str,
+}
+
+#[derive(Debug, Deserialize)]
+pub(crate) struct RawApiResponse {
+    pub output: Option<Value>,
+    pub ctx_area_fk: Option<String>,
+    pub ctx_area_nk: Option<String>,
+    pub ctx_area_fk200: Option<String>,
+    pub ctx_area_nk200: Option<String>,
+}
+
+#[derive(Clone, Debug, PartialEq)]
+pub(crate) struct RawResponse {
+    pub output: Option<Value>,
+    pub continuation: Continuation,
+}
+
+pub(crate) async fn get<T: HttpClient>(
+    client: &Client<T>,
+    access_token: &AccessToken,
+    endpoint: Endpoint,
+    query_params: Vec<(&'static str, String)>,
+    continuation: Option<&Continuation>,
+    parse_context: &'static str,
+) -> Result<RawResponse> {
+    let request = build_get_request(client, access_token, endpoint, query_params, continuation);
+    let response = client.http_client().send(request).await?;
+
+    parse_response(response, parse_context)
+}
+
+pub(crate) async fn post<T: HttpClient>(
+    client: &Client<T>,
+    access_token: &AccessToken,
+    endpoint: Endpoint,
+    body_params: Vec<(&'static str, String)>,
+    parse_context: &'static str,
+) -> Result<RawResponse> {
+    let request = build_post_request(client, access_token, endpoint, body_params, parse_context)?;
+    let response = client.http_client().send(request).await?;
+
+    parse_response(response, parse_context)
+}
+
+pub(crate) fn account_params(account: &Account) -> Vec<(&'static str, String)> {
+    vec![
+        (CANO, account.number.as_str().to_string()),
+        (ACNT_PRDT_CD, account.product_code.as_str().to_string()),
+    ]
+}
+
+pub(crate) fn env_tr_id(
+    environment: Environment,
+    real_tr_id: &'static str,
+    mock_tr_id: &'static str,
+) -> &'static str {
+    match environment {
+        Environment::Real => real_tr_id,
+        Environment::Mock => mock_tr_id,
+    }
+}
+
+pub(crate) fn require_non_empty(
+    value: impl Into<String>,
+    field_name: &'static str,
+) -> Result<String> {
+    let value = value.into();
+
+    if value.is_empty() {
+        return Err(Error::config(format!("{field_name} is empty")));
+    }
+
+    Ok(value)
+}
+
+pub(crate) fn require_output(
+    response: RawResponse,
+    parse_context: &'static str,
+) -> Result<(Value, Continuation)> {
+    let output = response
+        .output
+        .ok_or_else(|| Error::parse(format!("{parse_context} response missing output")))?;
+
+    Ok((output, response.continuation))
+}
+
+fn build_get_request<T>(
+    client: &Client<T>,
+    access_token: &AccessToken,
+    endpoint: Endpoint,
+    query_params: Vec<(&'static str, String)>,
+    continuation: Option<&Continuation>,
+) -> Request {
+    let mut request = Request::get(client.rest_endpoint_url(endpoint.path))
+        .with_header("content-type", CONTENT_TYPE_JSON)
+        .with_header(AUTHORIZATION_HEADER, access_token.bearer_authorization())
+        .with_header(
+            APP_KEY_HEADER,
+            client.config().credentials.app_key.expose_secret(),
+        )
+        .with_header(
+            APP_SECRET_HEADER,
+            client.config().credentials.app_secret.expose_secret(),
+        )
+        .with_header(TR_ID_HEADER, endpoint.tr_id)
+        .with_header(CUSTTYPE_HEADER, PERSONAL_CUSTOMER_TYPE)
+        .with_header(
+            TR_CONT_HEADER,
+            continuation
+                .and_then(|continuation| continuation.tr_cont.as_deref())
+                .unwrap_or(""),
+        );
+
+    for (name, value) in query_params {
+        request = request.with_query_param(name, value);
+    }
+
+    request
+}
+
+fn build_post_request<T>(
+    client: &Client<T>,
+    access_token: &AccessToken,
+    endpoint: Endpoint,
+    body_params: Vec<(&'static str, String)>,
+    parse_context: &'static str,
+) -> Result<Request> {
+    let body = serialize_body_params(body_params, parse_context)?;
+
+    Ok(Request::post(client.rest_endpoint_url(endpoint.path))
+        .with_header("content-type", CONTENT_TYPE_JSON)
+        .with_header(AUTHORIZATION_HEADER, access_token.bearer_authorization())
+        .with_header(
+            APP_KEY_HEADER,
+            client.config().credentials.app_key.expose_secret(),
+        )
+        .with_header(
+            APP_SECRET_HEADER,
+            client.config().credentials.app_secret.expose_secret(),
+        )
+        .with_header(TR_ID_HEADER, endpoint.tr_id)
+        .with_header(CUSTTYPE_HEADER, PERSONAL_CUSTOMER_TYPE)
+        .with_body(body))
+}
+
+fn parse_response(response: Response, parse_context: &'static str) -> Result<RawResponse> {
+    if let Some(status) = ApiResponseStatus::from_body(response.body())
+        && !status.is_success()
+    {
+        return Err(status.into_api_error(status_fallback_message(&response)));
+    }
+
+    if !response.is_success() {
+        return Err(Error::api(
+            None,
+            format!("unexpected HTTP status: {}", response.status_code()),
+        ));
+    }
+
+    let mut continuation = Continuation::from_response(&response);
+    let body = serde_json::from_slice::<RawApiResponse>(response.body()).map_err(|error| {
+        Error::parse(format!("failed to parse {parse_context} response: {error}"))
+    })?;
+
+    if continuation.ctx_area_fk.is_none() {
+        continuation.ctx_area_fk = body.ctx_area_fk.clone().or(body.ctx_area_fk200.clone());
+    }
+
+    if continuation.ctx_area_nk.is_none() {
+        continuation.ctx_area_nk = body.ctx_area_nk.clone().or(body.ctx_area_nk200.clone());
+    }
+
+    Ok(RawResponse {
+        output: body.output,
+        continuation,
+    })
+}
+
+fn serialize_body_params(
+    body_params: Vec<(&'static str, String)>,
+    parse_context: &'static str,
+) -> Result<Vec<u8>> {
+    let body = body_params
+        .into_iter()
+        .map(|(name, value)| (name.to_string(), Value::String(value)))
+        .collect::<Map<_, _>>();
+
+    serde_json::to_vec(&body).map_err(|error| {
+        Error::parse(format!(
+            "failed to serialize {parse_context} request: {error}"
+        ))
+    })
+}
+
+fn optional_header(response: &Response, name: &str) -> Option<String> {
+    response
+        .header(name)
+        .filter(|value| !value.is_empty())
+        .map(ToOwned::to_owned)
+}
+
+fn status_fallback_message(response: &Response) -> String {
+    if response.is_success() {
+        "KIS API request failed".to_string()
+    } else {
+        format!("unexpected HTTP status: {}", response.status_code())
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn overseas_exchange_accepts_only_us_markets() {
+        assert_eq!(
+            OverseasExchange::from_kis_code("NASD"),
+            Ok(OverseasExchange::Nasdaq)
+        );
+        assert_eq!(
+            OverseasExchange::from_kis_code("SEHK"),
+            Err(Error::config("only NASD, NYSE, and AMEX are supported"))
+        );
+    }
+
+    #[test]
+    fn overseas_stock_code_rejects_empty_value() {
+        assert_eq!(
+            OverseasStockCode::new(""),
+            Err(Error::config("overseas stock code is empty"))
+        );
+    }
+}
