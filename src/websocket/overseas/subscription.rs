@@ -3,7 +3,7 @@ use crate::error::Result;
 use crate::websocket::subscription::{Subscription, SubscriptionAction};
 
 pub const OVERSEAS_EXECUTION_NOTICE_REAL_TR_ID: &str = "H0GSCNI0";
-pub const OVERSEAS_EXECUTION_NOTICE_MOCK_TR_ID: &str = "H0GSCNI9";
+pub const OVERSEAS_EXECUTION_NOTICE_VIRTUAL_TR_ID: &str = "H0GSCNI9";
 
 pub fn execution_notice_subscription(
     action: SubscriptionAction,
@@ -12,7 +12,7 @@ pub fn execution_notice_subscription(
 ) -> Result<Subscription> {
     let tr_id = match environment {
         Environment::Real => OVERSEAS_EXECUTION_NOTICE_REAL_TR_ID,
-        Environment::Mock => OVERSEAS_EXECUTION_NOTICE_MOCK_TR_ID,
+        Environment::Virtual => OVERSEAS_EXECUTION_NOTICE_VIRTUAL_TR_ID,
     };
 
     Subscription::new(action, tr_id, hts_id)
@@ -26,12 +26,12 @@ mod tests {
     fn execution_notice_subscription_uses_environment_specific_tr_id() {
         let subscription = execution_notice_subscription(
             SubscriptionAction::Subscribe,
-            Environment::Mock,
+            Environment::Virtual,
             "hts-id",
         )
         .unwrap();
 
-        assert_eq!(subscription.tr_id, OVERSEAS_EXECUTION_NOTICE_MOCK_TR_ID);
+        assert_eq!(subscription.tr_id, OVERSEAS_EXECUTION_NOTICE_VIRTUAL_TR_ID);
 
         let subscription = execution_notice_subscription(
             SubscriptionAction::Subscribe,

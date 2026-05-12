@@ -202,6 +202,10 @@ pub(crate) fn parse_response(
     response: Response,
     parse_context: &'static str,
 ) -> Result<RawResponse> {
+    if response.status_code() == 429 {
+        return Err(Error::rate_limited_http_status());
+    }
+
     if let Some(status) = ApiResponseStatus::from_body(response.body())
         && !status.is_success()
     {

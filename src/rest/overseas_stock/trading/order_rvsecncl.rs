@@ -12,7 +12,7 @@ use crate::rest::overseas_stock::common::{
 
 pub const ORDER_RVSECNCL_PATH: &str = "/uapi/overseas-stock/v1/trading/order-rvsecncl";
 pub const ORDER_RVSECNCL_REAL_TR_ID: &str = "TTTT1004U";
-pub const ORDER_RVSECNCL_MOCK_TR_ID: &str = "VTTT1004U";
+pub const ORDER_RVSECNCL_VIRTUAL_TR_ID: &str = "VTTT1004U";
 
 const OVRS_EXCG_CD: &str = "OVRS_EXCG_CD";
 const PDNO: &str = "PDNO";
@@ -156,7 +156,7 @@ impl<T: HttpClient> Service<'_, T> {
                 tr_id: env_tr_id(
                     self.client.config().environment,
                     ORDER_RVSECNCL_REAL_TR_ID,
-                    ORDER_RVSECNCL_MOCK_TR_ID,
+                    ORDER_RVSECNCL_VIRTUAL_TR_ID,
                 ),
             },
             body,

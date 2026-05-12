@@ -14,7 +14,7 @@ use crate::rest::domestic_stock::common::Endpoint;
 
 pub const ORDER_RVSECNCL_PATH: &str = "/uapi/domestic-stock/v1/trading/order-rvsecncl";
 pub const ORDER_RVSECNCL_REAL_TR_ID: &str = "TTTC0013U";
-pub const ORDER_RVSECNCL_MOCK_TR_ID: &str = "VTTC0013U";
+pub const ORDER_RVSECNCL_VIRTUAL_TR_ID: &str = "VTTC0013U";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OrderRvsecnclRequest {
@@ -135,7 +135,7 @@ impl<T: HttpClient> Service<'_, T> {
                 tr_id: env_tr_id(
                     self.client.config().environment,
                     ORDER_RVSECNCL_REAL_TR_ID,
-                    ORDER_RVSECNCL_MOCK_TR_ID,
+                    ORDER_RVSECNCL_VIRTUAL_TR_ID,
                 ),
             },
             body,

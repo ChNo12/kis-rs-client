@@ -2,7 +2,10 @@ use std::fmt;
 
 pub type Result<T> = std::result::Result<T, Error>;
 
-#[derive(Debug, Eq, PartialEq)]
+pub const HTTP_RATE_LIMIT_CODE: &str = "HTTP_429";
+pub const KIS_RATE_LIMIT_CODE: &str = "EGW00201";
+
+#[derive(Clone, Debug, Eq, PartialEq)]
 pub enum Error {
     Config {
         message: String,
@@ -53,6 +56,23 @@ impl Error {
             message: message.into(),
         }
     }
+
+    pub fn rate_limited_http_status() -> Self {
+        Self::api(
+            Some(HTTP_RATE_LIMIT_CODE.to_string()),
+            "rate limited: HTTP status 429",
+        )
+    }
+
+    pub fn is_rate_limited(&self) -> bool {
+        matches!(
+            self,
+            Self::Api {
+                code: Some(code),
+                ..
+            } if code == HTTP_RATE_LIMIT_CODE || code == KIS_RATE_LIMIT_CODE
+        )
+    }
 }
 
 impl fmt::Display for Error {
@@ -75,3 +95,17 @@ impl fmt::Display for Error {
 }
 
 impl std::error::Error for Error {}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn identifies_http_and_kis_rate_limit_errors() {
+        assert!(Error::rate_limited_http_status().is_rate_limited());
+        assert!(
+            Error::api(Some(KIS_RATE_LIMIT_CODE.to_string()), "rate limited").is_rate_limited()
+        );
+        assert!(!Error::api(Some("MCA00000".to_string()), "other").is_rate_limited());
+    }
+}

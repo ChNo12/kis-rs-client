@@ -10,11 +10,12 @@ use crate::error::Result;
 use crate::http::HttpClient;
 use crate::rest::domestic_stock::Continuation;
 use crate::rest::domestic_stock::common::Endpoint;
+use crate::rest::{PageCollection, PageLimit, PageStopReason};
 
 pub const INQUIRE_PSBL_RVSECNCL_PATH: &str =
     "/uapi/domestic-stock/v1/trading/inquire-psbl-rvsecncl";
 pub const INQUIRE_PSBL_RVSECNCL_TR_ID: &str = "TTTC0084R";
-pub const INQUIRE_PSBL_RVSECNCL_MOCK_TR_ID: &str = "VTTC0084R";
+pub const INQUIRE_PSBL_RVSECNCL_VIRTUAL_TR_ID: &str = "VTTC0084R";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct InquirePsblRvsecnclRequest {
@@ -83,7 +84,7 @@ impl<T: HttpClient> Service<'_, T> {
                 tr_id: env_tr_id(
                     self.client.config().environment,
                     INQUIRE_PSBL_RVSECNCL_TR_ID,
-                    INQUIRE_PSBL_RVSECNCL_MOCK_TR_ID,
+                    INQUIRE_PSBL_RVSECNCL_VIRTUAL_TR_ID,
                 ),
             },
             params,
@@ -96,5 +97,53 @@ impl<T: HttpClient> Service<'_, T> {
             output: response.output,
             continuation: response.continuation,
         })
+    }
+
+    pub async fn inquire_psbl_rvsecncl_pages(
+        &self,
+        access_token: &AccessToken,
+        mut request: InquirePsblRvsecnclRequest,
+        limit: PageLimit,
+    ) -> Result<PageCollection<InquirePsblRvsecnclResponse, Continuation>> {
+        let max_pages = limit.max_pages()?;
+        let mut pages = Vec::new();
+
+        loop {
+            let response = match self
+                .inquire_psbl_rvsecncl(access_token, request.clone())
+                .await
+            {
+                Ok(response) => response,
+                Err(error) if error.is_rate_limited() => {
+                    return Ok(PageCollection {
+                        pages,
+                        next: request.continuation,
+                        stop_reason: PageStopReason::RateLimited { error },
+                    });
+                }
+                Err(error) => return Err(error),
+            };
+
+            let next = response.continuation.next_request();
+            pages.push(response);
+
+            let Some(next) = next else {
+                return Ok(PageCollection {
+                    pages,
+                    next: None,
+                    stop_reason: PageStopReason::Exhausted,
+                });
+            };
+
+            if max_pages.is_some_and(|max_pages| pages.len() >= max_pages) {
+                return Ok(PageCollection {
+                    pages,
+                    next: Some(next),
+                    stop_reason: PageStopReason::PageLimitReached,
+                });
+            }
+
+            request = request.with_continuation(next);
+        }
     }
 }

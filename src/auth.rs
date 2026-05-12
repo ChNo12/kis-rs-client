@@ -398,7 +398,7 @@ mod tests {
     #[tokio::test]
     async fn issue_token_sends_kis_token_request() {
         let credentials = Credentials::new("app-key", "app-secret").unwrap();
-        let config = Config::new(Environment::Mock, credentials);
+        let config = Config::new(Environment::Virtual, credentials);
         let http_client = MockHttpClient::new(Response::new(
             200,
             r#"{
@@ -441,7 +441,7 @@ mod tests {
     #[tokio::test]
     async fn issue_approval_key_sends_kis_approval_request() {
         let credentials = Credentials::new("app-key", "app-secret").unwrap();
-        let config = Config::new(Environment::Mock, credentials);
+        let config = Config::new(Environment::Virtual, credentials);
         let http_client = MockHttpClient::new(Response::new(
             200,
             r#"{
@@ -480,7 +480,7 @@ mod tests {
     #[tokio::test]
     async fn issue_token_rejects_non_success_http_status() {
         let credentials = Credentials::new("app-key", "app-secret").unwrap();
-        let config = Config::new(Environment::Mock, credentials);
+        let config = Config::new(Environment::Virtual, credentials);
         let http_client = MockHttpClient::new(Response::new(401, "denied"));
         let client = Client::new(config, &http_client);
 
@@ -495,7 +495,7 @@ mod tests {
     #[tokio::test]
     async fn issue_token_uses_kis_error_body_on_non_success_http_status() {
         let credentials = Credentials::new("app-key", "app-secret").unwrap();
-        let config = Config::new(Environment::Mock, credentials);
+        let config = Config::new(Environment::Virtual, credentials);
         let http_client = MockHttpClient::new(Response::new(
             401,
             r#"{
@@ -517,7 +517,7 @@ mod tests {
     #[tokio::test]
     async fn issue_token_rejects_kis_error_body_with_success_http_status() {
         let credentials = Credentials::new("app-key", "app-secret").unwrap();
-        let config = Config::new(Environment::Mock, credentials);
+        let config = Config::new(Environment::Virtual, credentials);
         let http_client = MockHttpClient::new(Response::new(
             200,
             r#"{
@@ -539,7 +539,7 @@ mod tests {
     #[tokio::test]
     async fn issue_token_rejects_invalid_json_response() {
         let credentials = Credentials::new("app-key", "app-secret").unwrap();
-        let config = Config::new(Environment::Mock, credentials);
+        let config = Config::new(Environment::Virtual, credentials);
         let http_client = MockHttpClient::new(Response::new(200, "not-json"));
         let client = Client::new(config, &http_client);
 

@@ -43,7 +43,7 @@ impl HttpClient for &MockHttpClient {
 }
 
 #[tokio::test]
-async fn order_cash_sends_mock_buy_request() {
+async fn order_cash_sends_virtual_buy_request() {
     let http_client = MockHttpClient::new(ok_output_response());
     let client = mock_client(&http_client);
     let access_token = AccessToken::new("access-token-value");
@@ -69,7 +69,7 @@ async fn order_cash_sends_mock_buy_request() {
         request.url(),
         "https://openapivts.koreainvestment.com:29443/uapi/domestic-stock/v1/trading/order-cash"
     );
-    assert_header(&request, "tr_id", ORDER_CASH_MOCK_BUY_TR_ID);
+    assert_header(&request, "tr_id", ORDER_CASH_VIRTUAL_BUY_TR_ID);
     let body = request_body(&request);
     assert_eq!(body[CANO], "12345678");
     assert_eq!(body[ACNT_PRDT_CD], "01");
@@ -107,7 +107,7 @@ async fn real_order_cash_requires_explicit_opt_in() {
 async fn order_cash_requires_account() {
     let http_client = MockHttpClient::new(ok_output_response());
     let credentials = Credentials::new("app-key", "app-secret").unwrap();
-    let client = Client::new(Config::new(Environment::Mock, credentials), &http_client);
+    let client = Client::new(Config::new(Environment::Virtual, credentials), &http_client);
     let access_token = AccessToken::new("access-token-value");
     let request =
         OrderCashRequest::buy(StockCode::new("005930").unwrap(), "00", "1", "70000", "KRX")
@@ -153,7 +153,7 @@ async fn order_rvsecncl_sends_cancel_request() {
         request.url(),
         "https://openapivts.koreainvestment.com:29443/uapi/domestic-stock/v1/trading/order-rvsecncl"
     );
-    assert_header(&request, "tr_id", ORDER_RVSECNCL_MOCK_TR_ID);
+    assert_header(&request, "tr_id", ORDER_RVSECNCL_VIRTUAL_TR_ID);
     let body = request_body(&request);
     assert_eq!(body[KRX_FWDG_ORD_ORGNO], "06010");
     assert_eq!(body[ORGN_ODNO], "0000000001");
@@ -205,7 +205,7 @@ async fn inquire_psbl_rvsecncl_sends_query_and_reads_continuation() {
             (CTX_AREA_NK100.to_string(), "".to_string())
         ]
     );
-    assert_header(&request, "tr_id", INQUIRE_PSBL_RVSECNCL_MOCK_TR_ID);
+    assert_header(&request, "tr_id", INQUIRE_PSBL_RVSECNCL_VIRTUAL_TR_ID);
 }
 
 #[tokio::test]
@@ -291,7 +291,7 @@ async fn inquire_daily_ccld_sends_query() {
 
     let request = only_request(&http_client);
     assert_eq!(request.method(), Method::Get);
-    assert_header(&request, "tr_id", INQUIRE_DAILY_CCLD_MOCK_INNER_TR_ID);
+    assert_header(&request, "tr_id", INQUIRE_DAILY_CCLD_VIRTUAL_INNER_TR_ID);
     assert_eq!(
         request.query_params(),
         &[
@@ -334,7 +334,7 @@ fn mock_client(http_client: &MockHttpClient) -> Client<&MockHttpClient> {
         AccountNumber::new("12345678").unwrap(),
         ProductCode::new("01").unwrap(),
     );
-    let config = Config::new(Environment::Mock, credentials).with_account(account);
+    let config = Config::new(Environment::Virtual, credentials).with_account(account);
 
     Client::new(config, http_client)
 }

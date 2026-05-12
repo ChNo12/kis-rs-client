@@ -35,8 +35,8 @@ Updated: 2026-05-11
 | Constructor | TR ID Policy | `tr_key` |
 |---|---|---|
 | `websocket::domestic::realtime_price_subscription` | `DomesticRealtimePriceMarket`에서 선택 | 종목코드 |
-| `websocket::domestic::execution_notice_subscription` | `Environment::Real`/`Mock`에서 선택 | HTS ID |
-| `websocket::overseas::execution_notice_subscription` | `Environment::Real`/`Mock`에서 선택 | HTS ID |
+| `websocket::domestic::execution_notice_subscription` | `Environment::Real`/`Virtual`에서 선택 | HTS ID |
+| `websocket::overseas::execution_notice_subscription` | `Environment::Real`/`Virtual`에서 선택 | HTS ID |
 
 ## Deferred
 

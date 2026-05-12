@@ -2,12 +2,12 @@ use serde::Deserialize;
 
 use crate::error::{Error, Result};
 use crate::websocket::domestic::{
-    DOMESTIC_EXECUTION_NOTICE_MOCK_TR_ID, DOMESTIC_EXECUTION_NOTICE_REAL_TR_ID,
+    DOMESTIC_EXECUTION_NOTICE_REAL_TR_ID, DOMESTIC_EXECUTION_NOTICE_VIRTUAL_TR_ID,
     DOMESTIC_REALTIME_PRICE_KRX_TR_ID, DOMESTIC_REALTIME_PRICE_NXT_TR_ID,
     DOMESTIC_REALTIME_PRICE_UNIFIED_TR_ID,
 };
 use crate::websocket::overseas::{
-    OVERSEAS_EXECUTION_NOTICE_MOCK_TR_ID, OVERSEAS_EXECUTION_NOTICE_REAL_TR_ID,
+    OVERSEAS_EXECUTION_NOTICE_REAL_TR_ID, OVERSEAS_EXECUTION_NOTICE_VIRTUAL_TR_ID,
 };
 
 pub const PINGPONG_TR_ID: &str = "PINGPONG";
@@ -58,7 +58,7 @@ impl RealtimeDataFrame {
     pub fn is_domestic_execution_notice(&self) -> bool {
         matches!(
             self.tr_id.as_str(),
-            DOMESTIC_EXECUTION_NOTICE_REAL_TR_ID | DOMESTIC_EXECUTION_NOTICE_MOCK_TR_ID
+            DOMESTIC_EXECUTION_NOTICE_REAL_TR_ID | DOMESTIC_EXECUTION_NOTICE_VIRTUAL_TR_ID
         )
     }
 
@@ -74,7 +74,7 @@ impl RealtimeDataFrame {
     pub fn is_overseas_execution_notice(&self) -> bool {
         matches!(
             self.tr_id.as_str(),
-            OVERSEAS_EXECUTION_NOTICE_REAL_TR_ID | OVERSEAS_EXECUTION_NOTICE_MOCK_TR_ID
+            OVERSEAS_EXECUTION_NOTICE_REAL_TR_ID | OVERSEAS_EXECUTION_NOTICE_VIRTUAL_TR_ID
         )
     }
 }

@@ -62,7 +62,7 @@ pub struct ClientBuilder {
 impl ClientBuilder {
     pub fn new() -> Self {
         Self {
-            environment: Environment::Mock,
+            environment: Environment::Virtual,
             credentials: None,
             account: None,
             real_ordering_enabled: false,
@@ -74,12 +74,12 @@ impl ClientBuilder {
         self
     }
 
-    pub fn mock(self) -> Self {
-        self.environment(Environment::Mock)
-    }
-
     pub fn real(self) -> Self {
         self.environment(Environment::Real)
+    }
+
+    pub fn virtual_trading(self) -> Self {
+        self.environment(Environment::Virtual)
     }
 
     pub fn credentials(
@@ -180,7 +180,7 @@ mod tests {
     #[test]
     fn builds_rest_endpoint_url() {
         let credentials = Credentials::new("app-key", "app-secret").unwrap();
-        let config = Config::new(Environment::Mock, credentials);
+        let config = Config::new(Environment::Virtual, credentials);
         let client = Client::new(config, NoopHttpClient);
 
         assert_eq!(
@@ -192,7 +192,7 @@ mod tests {
     #[test]
     fn exposes_websocket_base_url() {
         let credentials = Credentials::new("app-key", "app-secret").unwrap();
-        let config = Config::new(Environment::Mock, credentials);
+        let config = Config::new(Environment::Virtual, credentials);
         let client = Client::new(config, NoopHttpClient);
 
         assert_eq!(
@@ -202,14 +202,14 @@ mod tests {
     }
 
     #[test]
-    fn builder_defaults_to_mock_environment() {
+    fn builder_defaults_to_virtual_environment() {
         let client = ClientBuilder::new()
             .credentials("app-key", "app-secret")
             .unwrap()
             .build_with_http(NoopHttpClient)
             .unwrap();
 
-        assert_eq!(client.config().environment, Environment::Mock);
+        assert_eq!(client.config().environment, Environment::Virtual);
     }
 
     #[test]

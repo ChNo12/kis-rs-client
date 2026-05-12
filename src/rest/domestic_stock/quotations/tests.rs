@@ -553,7 +553,7 @@ async fn typed_output_rejects_invalid_numeric_field() {
 
 fn mock_client(http_client: &MockHttpClient) -> Client<&MockHttpClient> {
     let credentials = Credentials::new("app-key", "app-secret").unwrap();
-    let config = Config::new(Environment::Mock, credentials);
+    let config = Config::new(Environment::Virtual, credentials);
 
     Client::new(config, http_client)
 }

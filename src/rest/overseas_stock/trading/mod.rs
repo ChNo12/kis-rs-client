@@ -3,15 +3,15 @@ mod order;
 mod order_rvsecncl;
 
 pub use inquire_ccnl::{
-    INQUIRE_CCNL_MOCK_TR_ID, INQUIRE_CCNL_PATH, INQUIRE_CCNL_REAL_TR_ID, InquireCcnlRequest,
+    INQUIRE_CCNL_PATH, INQUIRE_CCNL_REAL_TR_ID, INQUIRE_CCNL_VIRTUAL_TR_ID, InquireCcnlRequest,
     InquireCcnlResponse,
 };
 pub use order::{
-    ORDER_MOCK_BUY_TR_ID, ORDER_MOCK_SELL_TR_ID, ORDER_PATH, ORDER_REAL_BUY_TR_ID,
-    ORDER_REAL_SELL_TR_ID, OrderRequest, OrderResponse, order_tr_id,
+    ORDER_PATH, ORDER_REAL_BUY_TR_ID, ORDER_REAL_SELL_TR_ID, ORDER_VIRTUAL_BUY_TR_ID,
+    ORDER_VIRTUAL_SELL_TR_ID, OrderRequest, OrderResponse, order_tr_id,
 };
 pub use order_rvsecncl::{
-    ORDER_RVSECNCL_MOCK_TR_ID, ORDER_RVSECNCL_PATH, ORDER_RVSECNCL_REAL_TR_ID,
+    ORDER_RVSECNCL_PATH, ORDER_RVSECNCL_REAL_TR_ID, ORDER_RVSECNCL_VIRTUAL_TR_ID,
     OrderRvsecnclRequest, OrderRvsecnclResponse, ReviseCancel,
 };
 use serde_json::Value;

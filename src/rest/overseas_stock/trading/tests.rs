@@ -38,7 +38,7 @@ impl HttpClient for &MockHttpClient {
 }
 
 #[tokio::test]
-async fn order_sends_us_mock_buy_request() {
+async fn order_sends_us_virtual_buy_request() {
     let http_client = MockHttpClient::new(ok_output_response());
     let client = mock_client(&http_client);
     let access_token = AccessToken::new("access-token-value");
@@ -69,7 +69,7 @@ async fn order_sends_us_mock_buy_request() {
         request.url(),
         "https://openapivts.koreainvestment.com:29443/uapi/overseas-stock/v1/trading/order"
     );
-    assert_header(&request, "tr_id", ORDER_MOCK_BUY_TR_ID);
+    assert_header(&request, "tr_id", ORDER_VIRTUAL_BUY_TR_ID);
     let body = request_body(&request);
     assert_eq!(body[CANO], "12345678");
     assert_eq!(body[ACNT_PRDT_CD], "01");
@@ -88,8 +88,8 @@ async fn order_tr_id_maps_us_side_and_environment() {
         ORDER_REAL_BUY_TR_ID
     );
     assert_eq!(
-        order_tr_id(Environment::Mock, OrderSide::Sell),
-        ORDER_MOCK_SELL_TR_ID
+        order_tr_id(Environment::Virtual, OrderSide::Sell),
+        ORDER_VIRTUAL_SELL_TR_ID
     );
 }
 
@@ -148,7 +148,7 @@ async fn order_rvsecncl_sends_cancel_request() {
         request.url(),
         "https://openapivts.koreainvestment.com:29443/uapi/overseas-stock/v1/trading/order-rvsecncl"
     );
-    assert_header(&request, "tr_id", ORDER_RVSECNCL_MOCK_TR_ID);
+    assert_header(&request, "tr_id", ORDER_RVSECNCL_VIRTUAL_TR_ID);
     let body = request_body(&request);
     assert_eq!(body["OVRS_EXCG_CD"], "NYSE");
     assert_eq!(body["PDNO"], "BA");
@@ -197,7 +197,7 @@ async fn inquire_ccnl_sends_query_and_reads_continuation() {
         request.url(),
         "https://openapivts.koreainvestment.com:29443/uapi/overseas-stock/v1/trading/inquire-ccnl"
     );
-    assert_header(&request, "tr_id", INQUIRE_CCNL_MOCK_TR_ID);
+    assert_header(&request, "tr_id", INQUIRE_CCNL_VIRTUAL_TR_ID);
     assert_eq!(
         request.query_params(),
         &[
@@ -284,7 +284,7 @@ fn mock_client(http_client: &MockHttpClient) -> Client<&MockHttpClient> {
         AccountNumber::new("12345678").unwrap(),
         ProductCode::new("01").unwrap(),
     );
-    let config = Config::new(Environment::Mock, credentials).with_account(account);
+    let config = Config::new(Environment::Virtual, credentials).with_account(account);
 
     Client::new(config, http_client)
 }

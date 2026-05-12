@@ -8,10 +8,11 @@ use crate::rest::overseas_stock::Continuation;
 use crate::rest::overseas_stock::common::{
     Endpoint, OverseasExchange, account_params, env_tr_id, get, require_non_empty, require_output,
 };
+use crate::rest::{PageCollection, PageLimit, PageStopReason};
 
 pub const INQUIRE_CCNL_PATH: &str = "/uapi/overseas-stock/v1/trading/inquire-ccnl";
 pub const INQUIRE_CCNL_REAL_TR_ID: &str = "TTTS3035R";
-pub const INQUIRE_CCNL_MOCK_TR_ID: &str = "VTTS3035R";
+pub const INQUIRE_CCNL_VIRTUAL_TR_ID: &str = "VTTS3035R";
 
 const PDNO: &str = "PDNO";
 const ORD_STRT_DT: &str = "ORD_STRT_DT";
@@ -160,7 +161,7 @@ impl<T: HttpClient> Service<'_, T> {
                 tr_id: env_tr_id(
                     self.client.config().environment,
                     INQUIRE_CCNL_REAL_TR_ID,
-                    INQUIRE_CCNL_MOCK_TR_ID,
+                    INQUIRE_CCNL_VIRTUAL_TR_ID,
                 ),
             },
             params,
@@ -174,6 +175,51 @@ impl<T: HttpClient> Service<'_, T> {
             output: response.output,
             continuation: response.continuation,
         })
+    }
+
+    pub async fn inquire_ccnl_pages(
+        &self,
+        access_token: &AccessToken,
+        mut request: InquireCcnlRequest,
+        limit: PageLimit,
+    ) -> Result<PageCollection<InquireCcnlResponse, Continuation>> {
+        let max_pages = limit.max_pages()?;
+        let mut pages = Vec::new();
+
+        loop {
+            let response = match self.inquire_ccnl(access_token, request.clone()).await {
+                Ok(response) => response,
+                Err(error) if error.is_rate_limited() => {
+                    return Ok(PageCollection {
+                        pages,
+                        next: request.continuation,
+                        stop_reason: PageStopReason::RateLimited { error },
+                    });
+                }
+                Err(error) => return Err(error),
+            };
+
+            let next = response.continuation.next_request();
+            pages.push(response);
+
+            let Some(next) = next else {
+                return Ok(PageCollection {
+                    pages,
+                    next: None,
+                    stop_reason: PageStopReason::Exhausted,
+                });
+            };
+
+            if max_pages.is_some_and(|max_pages| pages.len() >= max_pages) {
+                return Ok(PageCollection {
+                    pages,
+                    next: Some(next),
+                    stop_reason: PageStopReason::PageLimitReached,
+                });
+            }
+
+            request = request.with_continuation(next);
+        }
     }
 }
 

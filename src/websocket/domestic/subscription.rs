@@ -6,7 +6,7 @@ pub const DOMESTIC_REALTIME_PRICE_KRX_TR_ID: &str = "H0STCNT0";
 pub const DOMESTIC_REALTIME_PRICE_NXT_TR_ID: &str = "H0NXCNT0";
 pub const DOMESTIC_REALTIME_PRICE_UNIFIED_TR_ID: &str = "H0UNCNT0";
 pub const DOMESTIC_EXECUTION_NOTICE_REAL_TR_ID: &str = "H0STCNI0";
-pub const DOMESTIC_EXECUTION_NOTICE_MOCK_TR_ID: &str = "H0STCNI9";
+pub const DOMESTIC_EXECUTION_NOTICE_VIRTUAL_TR_ID: &str = "H0STCNI9";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum DomesticRealtimePriceMarket {
@@ -40,7 +40,7 @@ pub fn execution_notice_subscription(
 ) -> Result<Subscription> {
     let tr_id = match environment {
         Environment::Real => DOMESTIC_EXECUTION_NOTICE_REAL_TR_ID,
-        Environment::Mock => DOMESTIC_EXECUTION_NOTICE_MOCK_TR_ID,
+        Environment::Virtual => DOMESTIC_EXECUTION_NOTICE_VIRTUAL_TR_ID,
     };
 
     Subscription::new(action, tr_id, hts_id)
@@ -69,12 +69,12 @@ mod tests {
     fn execution_notice_subscription_uses_environment_specific_tr_id() {
         let subscription = execution_notice_subscription(
             SubscriptionAction::Subscribe,
-            Environment::Mock,
+            Environment::Virtual,
             "hts-id",
         )
         .unwrap();
 
-        assert_eq!(subscription.tr_id, DOMESTIC_EXECUTION_NOTICE_MOCK_TR_ID);
+        assert_eq!(subscription.tr_id, DOMESTIC_EXECUTION_NOTICE_VIRTUAL_TR_ID);
 
         let subscription = execution_notice_subscription(
             SubscriptionAction::Subscribe,
@@ -89,7 +89,7 @@ mod tests {
     #[test]
     fn subscription_rejects_empty_tr_key() {
         assert_eq!(
-            execution_notice_subscription(SubscriptionAction::Subscribe, Environment::Mock, ""),
+            execution_notice_subscription(SubscriptionAction::Subscribe, Environment::Virtual, ""),
             Err(Error::config("websocket tr_key is empty"))
         );
     }

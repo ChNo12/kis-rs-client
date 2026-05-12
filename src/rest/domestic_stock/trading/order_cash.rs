@@ -15,8 +15,8 @@ use crate::rest::domestic_stock::common::{Endpoint, StockCode};
 pub const ORDER_CASH_PATH: &str = "/uapi/domestic-stock/v1/trading/order-cash";
 pub const ORDER_CASH_REAL_SELL_TR_ID: &str = "TTTC0011U";
 pub const ORDER_CASH_REAL_BUY_TR_ID: &str = "TTTC0012U";
-pub const ORDER_CASH_MOCK_SELL_TR_ID: &str = "VTTC0011U";
-pub const ORDER_CASH_MOCK_BUY_TR_ID: &str = "VTTC0012U";
+pub const ORDER_CASH_VIRTUAL_SELL_TR_ID: &str = "VTTC0011U";
+pub const ORDER_CASH_VIRTUAL_BUY_TR_ID: &str = "VTTC0012U";
 
 #[derive(Clone, Debug, Eq, PartialEq)]
 pub struct OrderCashRequest {
@@ -109,8 +109,8 @@ pub const fn order_cash_tr_id(environment: Environment, side: OrderSide) -> &'st
     match (environment, side) {
         (Environment::Real, OrderSide::Sell) => ORDER_CASH_REAL_SELL_TR_ID,
         (Environment::Real, OrderSide::Buy) => ORDER_CASH_REAL_BUY_TR_ID,
-        (Environment::Mock, OrderSide::Sell) => ORDER_CASH_MOCK_SELL_TR_ID,
-        (Environment::Mock, OrderSide::Buy) => ORDER_CASH_MOCK_BUY_TR_ID,
+        (Environment::Virtual, OrderSide::Sell) => ORDER_CASH_VIRTUAL_SELL_TR_ID,
+        (Environment::Virtual, OrderSide::Buy) => ORDER_CASH_VIRTUAL_BUY_TR_ID,
     }
 }
 

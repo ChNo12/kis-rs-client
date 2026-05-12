@@ -61,7 +61,7 @@ use kis_rs_client::Client;
 #[tokio::main]
 async fn main() -> kis_rs_client::Result<()> {
     let client = Client::builder()
-        .mock()
+        .virtual_trading()
         .credentials("app-key", "app-secret")?
         .build_reqwest()?;
 
@@ -89,11 +89,47 @@ async fn main() -> kis_rs_client::Result<()> {
 ```bash
 export KIS_APP_KEY="..."
 export KIS_APP_SECRET="..."
-export KIS_USE_MOCK=true
+export KIS_USE_VIRTUAL=true
 export KIS_STOCK_CODE=005930
 
 cargo run --example quote
 ```
+
+## Pagination
+
+연속조회가 있는 API는 단일 페이지 응답의 `continuation`을 그대로 노출한다. 필요한 경우
+`*_pages` helper로 여러 페이지를 수집할 수 있다.
+
+```rust
+use kis_rs_client::rest::{PageLimit, PageStopReason};
+
+# async fn run(client: kis_rs_client::Client<kis_rs_client::ReqwestHttpClient>, token: kis_rs_client::AccessToken) -> kis_rs_client::Result<()> {
+let request = kis_rs_client::rest::domestic_stock::ranking::AfterHourBalanceRequest::new();
+let pages = client
+    .domestic_stock()
+    .ranking()
+    .after_hour_balance_pages(&token, request, PageLimit::Max(3))
+    .await?;
+
+match pages.stop_reason {
+    PageStopReason::Exhausted => {}
+    PageStopReason::PageLimitReached => {
+        let next = pages.next;
+        println!("resume continuation: {next:?}");
+    }
+    PageStopReason::RateLimited { error } => {
+        let next = pages.next;
+        println!("rate limited: {error}; resume continuation: {next:?}");
+    }
+}
+# Ok(())
+# }
+```
+
+`PageLimit::Max(n)`은 첫 페이지를 포함한 최대 호출 횟수다. `PageLimit::All`은
+`continuation`이 끝날 때까지 수집한다. HTTP 429를 만나면 에러로 중단하지 않고 지금까지
+수집한 page와 재개용 continuation을 반환한다. KIS 유량제어 오류 코드 `EGW00201`도 같은 방식으로
+처리한다.
 
 ## Order Safety
 
@@ -121,7 +157,7 @@ use kis_rs_client::websocket::{
 
 # async fn run() -> kis_rs_client::Result<()> {
 let client = Client::builder()
-    .mock()
+    .virtual_trading()
     .credentials("app-key", "app-secret")?
     .build_reqwest()?;
 let approval = client.issue_approval_key().await?;
@@ -161,7 +197,7 @@ while let Some(frame) = session.next_frame().await? {
 ```bash
 KIS_APP_KEY="..." \
 KIS_APP_SECRET="..." \
-KIS_USE_MOCK=true \
+KIS_USE_VIRTUAL=true \
 cargo test --test live_smoke live_smoke_readonly_domestic_quote_and_today_minute -- --ignored
 ```
 
@@ -189,18 +225,18 @@ KIS_APP_KEY="..." \
 KIS_APP_SECRET="..." \
 KIS_ACCOUNT_NO="..." \
 KIS_ACCOUNT_PRODUCT_CODE="..." \
-KIS_ENABLE_MOCK_ORDER_SMOKE=true \
-KIS_MOCK_DOMESTIC_ORDER_PRICE=50000 \
-cargo test --test live_smoke live_smoke_mock_domestic_buy_order_and_best_effort_cancel -- --ignored
+KIS_ENABLE_VIRTUAL_ORDER_SMOKE=true \
+KIS_VIRTUAL_DOMESTIC_ORDER_PRICE=50000 \
+cargo test --test live_smoke live_smoke_virtual_domestic_buy_order_and_best_effort_cancel -- --ignored
 
 # 모의 해외 매수 주문 및 취소
 KIS_APP_KEY="..." \
 KIS_APP_SECRET="..." \
 KIS_ACCOUNT_NO="..." \
 KIS_ACCOUNT_PRODUCT_CODE="..." \
-KIS_ENABLE_MOCK_ORDER_SMOKE=true \
-KIS_MOCK_OVERSEAS_ORDER_PRICE=100.00 \
-cargo test --test live_smoke live_smoke_mock_overseas_buy_order_and_cancel -- --ignored
+KIS_ENABLE_VIRTUAL_ORDER_SMOKE=true \
+KIS_VIRTUAL_OVERSEAS_ORDER_PRICE=100.00 \
+cargo test --test live_smoke live_smoke_virtual_overseas_buy_order_and_cancel -- --ignored
 
 # 국내 실시간 가격 WebSocket 1프레임 수신
 KIS_APP_KEY="..." \

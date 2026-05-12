@@ -6,6 +6,7 @@ use crate::http::HttpClient;
 use crate::models::domestic_stock::ranking::FluctuationItem;
 use crate::rest::domestic_stock::Continuation;
 use crate::rest::domestic_stock::common::Endpoint;
+use crate::rest::{PageCollection, PageLimit, PageStopReason};
 use serde_json::Value;
 
 pub const FLUCTUATION_PATH: &str = "/uapi/domestic-stock/v1/ranking/fluctuation";
@@ -198,5 +199,50 @@ impl<T: HttpClient> Service<'_, T> {
             output,
             continuation,
         })
+    }
+
+    pub async fn fluctuation_pages(
+        &self,
+        access_token: &AccessToken,
+        mut request: FluctuationRequest,
+        limit: PageLimit,
+    ) -> Result<PageCollection<FluctuationResponse, Continuation>> {
+        let max_pages = limit.max_pages()?;
+        let mut pages = Vec::new();
+
+        loop {
+            let response = match self.fluctuation(access_token, request.clone()).await {
+                Ok(response) => response,
+                Err(error) if error.is_rate_limited() => {
+                    return Ok(PageCollection {
+                        pages,
+                        next: request.continuation,
+                        stop_reason: PageStopReason::RateLimited { error },
+                    });
+                }
+                Err(error) => return Err(error),
+            };
+
+            let next = response.continuation.next_request();
+            pages.push(response);
+
+            let Some(next) = next else {
+                return Ok(PageCollection {
+                    pages,
+                    next: None,
+                    stop_reason: PageStopReason::Exhausted,
+                });
+            };
+
+            if max_pages.is_some_and(|max_pages| pages.len() >= max_pages) {
+                return Ok(PageCollection {
+                    pages,
+                    next: Some(next),
+                    stop_reason: PageStopReason::PageLimitReached,
+                });
+            }
+
+            request = request.with_continuation(next);
+        }
     }
 }

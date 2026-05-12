@@ -5,28 +5,28 @@ use serde::Deserialize;
 use crate::error::{Error, Result};
 
 pub const REAL_REST_BASE_URL: &str = "https://openapi.koreainvestment.com:9443";
-pub const MOCK_REST_BASE_URL: &str = "https://openapivts.koreainvestment.com:29443";
+pub const VIRTUAL_REST_BASE_URL: &str = "https://openapivts.koreainvestment.com:29443";
 pub const REAL_WEBSOCKET_BASE_URL: &str = "ws://ops.koreainvestment.com:21000";
-pub const MOCK_WEBSOCKET_BASE_URL: &str = "ws://ops.koreainvestment.com:31000";
+pub const VIRTUAL_WEBSOCKET_BASE_URL: &str = "ws://ops.koreainvestment.com:31000";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Environment {
     Real,
-    Mock,
+    Virtual,
 }
 
 impl Environment {
     pub const fn rest_base_url(self) -> &'static str {
         match self {
             Self::Real => REAL_REST_BASE_URL,
-            Self::Mock => MOCK_REST_BASE_URL,
+            Self::Virtual => VIRTUAL_REST_BASE_URL,
         }
     }
 
     pub const fn websocket_base_url(self) -> &'static str {
         match self {
             Self::Real => REAL_WEBSOCKET_BASE_URL,
-            Self::Mock => MOCK_WEBSOCKET_BASE_URL,
+            Self::Virtual => VIRTUAL_WEBSOCKET_BASE_URL,
         }
     }
 }
@@ -225,7 +225,7 @@ mod tests {
             "https://openapi.koreainvestment.com:9443"
         );
         assert_eq!(
-            Environment::Mock.rest_base_url(),
+            Environment::Virtual.rest_base_url(),
             "https://openapivts.koreainvestment.com:29443"
         );
     }
@@ -237,7 +237,7 @@ mod tests {
             "wss://ops.koreainvestment.com:21000"
         );
         assert_eq!(
-            Environment::Mock.websocket_base_url(),
+            Environment::Virtual.websocket_base_url(),
             "wss://vops.koreainvestment.com:31000"
         );
     }
@@ -269,7 +269,7 @@ mod tests {
     #[test]
     fn config_requires_account_when_missing() {
         let credentials = Credentials::new("app-key", "app-secret").unwrap();
-        let config = Config::new(Environment::Mock, credentials);
+        let config = Config::new(Environment::Virtual, credentials);
 
         assert_eq!(
             config.require_account(),
@@ -278,9 +278,9 @@ mod tests {
     }
 
     #[test]
-    fn mock_ordering_is_allowed_by_default() {
+    fn virtual_ordering_is_allowed_by_default() {
         let credentials = Credentials::new("app-key", "app-secret").unwrap();
-        let config = Config::new(Environment::Mock, credentials);
+        let config = Config::new(Environment::Virtual, credentials);
 
         assert_eq!(config.require_ordering_allowed(), Ok(()));
     }

@@ -155,11 +155,11 @@ pub(crate) fn account_params(account: &Account) -> Vec<(&'static str, String)> {
 pub(crate) fn env_tr_id(
     environment: Environment,
     real_tr_id: &'static str,
-    mock_tr_id: &'static str,
+    virtual_tr_id: &'static str,
 ) -> &'static str {
     match environment {
         Environment::Real => real_tr_id,
-        Environment::Mock => mock_tr_id,
+        Environment::Virtual => virtual_tr_id,
     }
 }
 
@@ -247,6 +247,10 @@ fn build_post_request<T>(
 }
 
 fn parse_response(response: Response, parse_context: &'static str) -> Result<RawResponse> {
+    if response.status_code() == 429 {
+        return Err(Error::rate_limited_http_status());
+    }
+
     if let Some(status) = ApiResponseStatus::from_body(response.body())
         && !status.is_success()
     {

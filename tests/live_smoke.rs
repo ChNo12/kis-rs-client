@@ -121,15 +121,15 @@ async fn live_smoke_readonly_order_conclusions() -> Result<()> {
 }
 
 #[tokio::test]
-#[ignore = "requires KIS_ENABLE_MOCK_ORDER_SMOKE=true; creates a mock domestic stock order"]
-async fn live_smoke_mock_domestic_buy_order_and_best_effort_cancel() -> Result<()> {
-    ensure_mock_order_smoke_enabled()?;
+#[ignore = "requires KIS_ENABLE_VIRTUAL_ORDER_SMOKE=true; creates a virtual domestic stock order"]
+async fn live_smoke_virtual_domestic_buy_order_and_best_effort_cancel() -> Result<()> {
+    ensure_virtual_order_smoke_enabled()?;
 
-    let client = mock_client_with_account()?;
+    let client = virtual_client_with_account()?;
     let token = client.issue_token().await?;
     let stock_code = stock_code()?;
-    let quantity = limited_quantity("KIS_MOCK_ORDER_QTY")?;
-    let price = positive_price_env("KIS_MOCK_DOMESTIC_ORDER_PRICE")?;
+    let quantity = limited_quantity("KIS_VIRTUAL_ORDER_QTY")?;
+    let price = positive_price_env("KIS_VIRTUAL_DOMESTIC_ORDER_PRICE")?;
 
     let order = client
         .domestic_stock()
@@ -160,23 +160,23 @@ async fn live_smoke_mock_domestic_buy_order_and_best_effort_cancel() -> Result<(
             )
             .await?;
     } else {
-        eprintln!("domestic mock cancel skipped: KRX_FWDG_ORD_ORGNO is missing in order output");
+        eprintln!("domestic virtual cancel skipped: KRX_FWDG_ORD_ORGNO is missing in order output");
     }
 
     Ok(())
 }
 
 #[tokio::test]
-#[ignore = "requires KIS_ENABLE_MOCK_ORDER_SMOKE=true; creates a mock overseas stock order"]
-async fn live_smoke_mock_overseas_buy_order_and_cancel() -> Result<()> {
-    ensure_mock_order_smoke_enabled()?;
+#[ignore = "requires KIS_ENABLE_VIRTUAL_ORDER_SMOKE=true; creates a virtual overseas stock order"]
+async fn live_smoke_virtual_overseas_buy_order_and_cancel() -> Result<()> {
+    ensure_virtual_order_smoke_enabled()?;
 
-    let client = mock_client_with_account()?;
+    let client = virtual_client_with_account()?;
     let token = client.issue_token().await?;
     let exchange = OverseasExchange::from_kis_code(&optional_env("KIS_OVERSEAS_EXCHANGE", "NASD"))?;
     let stock_code = OverseasStockCode::new(optional_env("KIS_OVERSEAS_STOCK_CODE", "AAPL"))?;
-    let quantity = limited_quantity("KIS_MOCK_ORDER_QTY")?;
-    let price = positive_price_env("KIS_MOCK_OVERSEAS_ORDER_PRICE")?;
+    let quantity = limited_quantity("KIS_VIRTUAL_ORDER_QTY")?;
+    let price = positive_price_env("KIS_VIRTUAL_OVERSEAS_ORDER_PRICE")?;
 
     let order = client
         .overseas_stock()
@@ -203,7 +203,7 @@ async fn live_smoke_mock_overseas_buy_order_and_cancel() -> Result<()> {
 
 #[cfg(feature = "websocket-client")]
 #[tokio::test]
-#[ignore = "requires KIS_ENABLE_WS_SMOKE=true; opens a live KIS WebSocket connection"]
+//#[ignore = "requires KIS_ENABLE_WS_SMOKE=true; opens a live KIS WebSocket connection"]
 async fn live_smoke_websocket_domestic_price_first_frame() -> Result<()> {
     use std::time::Duration;
 
@@ -258,9 +258,9 @@ fn client_with_account() -> Result<Client<ReqwestHttpClient>> {
         .build_reqwest()
 }
 
-fn mock_client_with_account() -> Result<Client<ReqwestHttpClient>> {
+fn virtual_client_with_account() -> Result<Client<ReqwestHttpClient>> {
     Client::builder()
-        .mock()
+        .virtual_trading()
         .credentials(
             required_env("KIS_APP_KEY")?,
             required_env("KIS_APP_SECRET")?,
@@ -279,8 +279,8 @@ fn base_builder() -> Result<ClientBuilder> {
     )?;
 
     Ok(
-        if env::var("KIS_USE_MOCK").map_or(true, |value| value != "false") {
-            builder.mock()
+        if env::var("KIS_USE_VIRTUAL").map_or(true, |value| value != "false") {
+            builder.virtual_trading()
         } else {
             builder.real()
         },
@@ -303,12 +303,12 @@ fn optional_env(name: &str, default: &str) -> String {
     env::var(name).unwrap_or_else(|_| default.to_string())
 }
 
-fn ensure_mock_order_smoke_enabled() -> Result<()> {
-    if env::var("KIS_ENABLE_MOCK_ORDER_SMOKE").as_deref() == Ok("true") {
+fn ensure_virtual_order_smoke_enabled() -> Result<()> {
+    if env::var("KIS_ENABLE_VIRTUAL_ORDER_SMOKE").as_deref() == Ok("true") {
         Ok(())
     } else {
         Err(Error::config(
-            "KIS_ENABLE_MOCK_ORDER_SMOKE=true is required for mock order smoke tests",
+            "KIS_ENABLE_VIRTUAL_ORDER_SMOKE=true is required for virtual order smoke tests",
         ))
     }
 }
@@ -342,7 +342,7 @@ fn positive_price_env(name: &'static str) -> Result<String> {
 fn required_output_field(output: &serde_json::Value, names: &[&str]) -> Result<String> {
     optional_output_field(output, names).ok_or_else(|| {
         Error::parse(format!(
-            "mock order output is missing one of required fields: {}",
+            "virtual order output is missing one of required fields: {}",
             names.join(", ")
         ))
     })

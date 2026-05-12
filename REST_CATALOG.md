@@ -14,6 +14,8 @@ Updated: 2026-05-11
 - 미구현 API의 path, TR ID, 요청/응답 필드는 구현 시점에 공식 샘플과 공식 문서를 다시 확인한다.
 - typed view의 숫자형 응답 필드는 기본적으로 `rust_decimal::Decimal`을 사용한다.
 - 자동 테스트에서 실제 KIS API는 호출하지 않는다. mock fixture로 path, TR ID, query/body, output parsing을 검증한다.
+- 연속조회 API는 단일 페이지 호출을 기본으로 유지하고, 필요한 경우 `*_pages` helper로 제한/전체 수집한다.
+- HTTP 429와 KIS 유량제어 오류 코드 `EGW00201`은 부분 수집 결과와 재개용 continuation을 반환한다.
 
 ## Summary
 
@@ -194,5 +196,5 @@ v1은 미국 `NASD`, `NYSE`, `AMEX`만 지원한다.
 4. 안정적으로 확인한 필드는 `typed()` view를 추가한다.
 5. 숫자형 typed field는 `Decimal`로 파싱한다.
 6. 필수 필드 누락/숫자 파싱 실패 fixture를 추가한다.
-7. 연속조회 API면 `Continuation` fixture를 추가한다.
+7. 연속조회 API면 `Continuation` fixture와 `*_pages` page-limit/HTTP 429 부분 반환 fixture를 추가한다.
 8. 실제 KIS API 호출 없이 mock transport로 path, TR ID, query/body, parsing을 검증한다.

@@ -5,9 +5,10 @@ use crate::config::{Config, Credentials, Environment};
 use crate::error::{Error, Result};
 use crate::http::{Header, HttpClient, Method, Request, Response};
 use crate::rest::domestic_stock::Continuation;
+use crate::rest::{PageLimit, PageStopReason};
 use async_trait::async_trait;
 use rust_decimal::Decimal;
-use std::sync::Mutex;
+use std::{collections::VecDeque, sync::Mutex};
 
 #[derive(Debug)]
 struct MockHttpClient {
@@ -33,6 +34,34 @@ impl HttpClient for &MockHttpClient {
     async fn send(&self, request: Request) -> Result<Response> {
         self.requests.lock().unwrap().push(request);
         Ok(self.response.clone())
+    }
+}
+
+#[derive(Debug)]
+struct SequenceMockHttpClient {
+    responses: Mutex<VecDeque<Response>>,
+    requests: Mutex<Vec<Request>>,
+}
+
+impl SequenceMockHttpClient {
+    fn new(responses: impl IntoIterator<Item = Response>) -> Self {
+        Self {
+            responses: Mutex::new(responses.into_iter().collect()),
+            requests: Mutex::new(Vec::new()),
+        }
+    }
+
+    fn requests(&self) -> Vec<Request> {
+        self.requests.lock().unwrap().clone()
+    }
+}
+
+#[async_trait]
+impl HttpClient for &SequenceMockHttpClient {
+    async fn send(&self, request: Request) -> Result<Response> {
+        self.requests.lock().unwrap().push(request);
+
+        Ok(self.responses.lock().unwrap().pop_front().unwrap())
     }
 }
 
@@ -105,6 +134,124 @@ async fn after_hour_balance_sends_request_and_parses_typed_output() {
     );
     assert_header(&request, "tr_id", AFTER_HOUR_BALANCE_TR_ID);
     assert_header(&request, "tr_cont", "");
+}
+
+#[tokio::test]
+async fn after_hour_balance_pages_stops_at_page_limit() {
+    let http_client = SequenceMockHttpClient::new([
+        ranking_page_response("005930").with_headers([Header::new("tr_cont", "M")]),
+        ranking_page_response("000660").with_headers([Header::new("tr_cont", "M")]),
+    ]);
+    let client = sequence_mock_client(&http_client);
+    let access_token = AccessToken::new("access-token-value");
+
+    let collection = client
+        .domestic_stock()
+        .ranking()
+        .after_hour_balance_pages(
+            &access_token,
+            AfterHourBalanceRequest::new(),
+            PageLimit::Max(2),
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(collection.pages.len(), 2);
+    assert_eq!(collection.stop_reason, PageStopReason::PageLimitReached);
+    assert_eq!(
+        collection
+            .next
+            .as_ref()
+            .and_then(|next| next.tr_cont.as_deref()),
+        Some("N")
+    );
+
+    let requests = http_client.requests();
+    assert_eq!(requests.len(), 2);
+    assert_header(&requests[0], "tr_cont", "");
+    assert_header(&requests[1], "tr_cont", "N");
+}
+
+#[tokio::test]
+async fn after_hour_balance_pages_returns_partial_result_on_http_429() {
+    let http_client = SequenceMockHttpClient::new([
+        ranking_page_response("005930").with_headers([Header::new("tr_cont", "M")]),
+        Response::new(
+            429,
+            r#"{"rt_cd":"1","msg_cd":"RATE","msg1":"too many requests"}"#,
+        ),
+    ]);
+    let client = sequence_mock_client(&http_client);
+    let access_token = AccessToken::new("access-token-value");
+
+    let collection = client
+        .domestic_stock()
+        .ranking()
+        .after_hour_balance_pages(
+            &access_token,
+            AfterHourBalanceRequest::new(),
+            PageLimit::All,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(collection.pages.len(), 1);
+    assert_eq!(
+        collection
+            .next
+            .as_ref()
+            .and_then(|next| next.tr_cont.as_deref()),
+        Some("N")
+    );
+    assert!(matches!(
+        collection.stop_reason,
+        PageStopReason::RateLimited { ref error } if error.is_rate_limited()
+    ));
+
+    let requests = http_client.requests();
+    assert_eq!(requests.len(), 2);
+    assert_header(&requests[1], "tr_cont", "N");
+}
+
+#[tokio::test]
+async fn after_hour_balance_pages_returns_partial_result_on_kis_rate_limit_code() {
+    let http_client = SequenceMockHttpClient::new([
+        ranking_page_response("005930").with_headers([Header::new("tr_cont", "M")]),
+        Response::new(
+            200,
+            r#"{
+                "rt_cd": "1",
+                "msg_cd": "EGW00201",
+                "msg1": "초당 거래건수를 초과하였습니다."
+            }"#,
+        ),
+    ]);
+    let client = sequence_mock_client(&http_client);
+    let access_token = AccessToken::new("access-token-value");
+
+    let collection = client
+        .domestic_stock()
+        .ranking()
+        .after_hour_balance_pages(
+            &access_token,
+            AfterHourBalanceRequest::new(),
+            PageLimit::All,
+        )
+        .await
+        .unwrap();
+
+    assert_eq!(collection.pages.len(), 1);
+    assert_eq!(
+        collection
+            .next
+            .as_ref()
+            .and_then(|next| next.tr_cont.as_deref()),
+        Some("N")
+    );
+    assert!(matches!(
+        collection.stop_reason,
+        PageStopReason::RateLimited { ref error } if error.is_rate_limited()
+    ));
 }
 
 #[tokio::test]
@@ -419,9 +566,42 @@ async fn fluctuation_rejects_invalid_typed_number() {
 
 fn mock_client(http_client: &MockHttpClient) -> Client<&MockHttpClient> {
     let credentials = Credentials::new("app-key", "app-secret").unwrap();
-    let config = Config::new(Environment::Mock, credentials);
+    let config = Config::new(Environment::Virtual, credentials);
 
     Client::new(config, http_client)
+}
+
+fn sequence_mock_client(http_client: &SequenceMockHttpClient) -> Client<&SequenceMockHttpClient> {
+    let credentials = Credentials::new("app-key", "app-secret").unwrap();
+    let config = Config::new(Environment::Virtual, credentials);
+
+    Client::new(config, http_client)
+}
+
+fn ranking_page_response(stock_code: &str) -> Response {
+    Response::new(
+        200,
+        format!(
+            r#"{{
+                "rt_cd": "0",
+                "msg_cd": "MCA00000",
+                "msg1": "ok",
+                "output": [{{
+                    "stck_shrn_iscd": "{stock_code}",
+                    "data_rank": "1",
+                    "hts_kor_isnm": "삼성전자",
+                    "stck_prpr": "70500.5",
+                    "prdy_vrss": "100",
+                    "prdy_vrss_sign": "2",
+                    "prdy_ctrt": "0.14",
+                    "ovtm_total_askp_rsqn": "1000",
+                    "ovtm_total_bidp_rsqn": "900",
+                    "mkob_otcp_vol": "200",
+                    "mkfa_otcp_vol": "300"
+                }}]
+            }}"#
+        ),
+    )
 }
 
 fn only_request(http_client: &MockHttpClient) -> Request {

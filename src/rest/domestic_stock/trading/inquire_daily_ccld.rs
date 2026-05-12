@@ -12,12 +12,13 @@ use crate::error::Result;
 use crate::http::HttpClient;
 use crate::rest::domestic_stock::Continuation;
 use crate::rest::domestic_stock::common::Endpoint;
+use crate::rest::{PageCollection, PageLimit, PageStopReason};
 
 pub const INQUIRE_DAILY_CCLD_PATH: &str = "/uapi/domestic-stock/v1/trading/inquire-daily-ccld";
 pub const INQUIRE_DAILY_CCLD_REAL_INNER_TR_ID: &str = "TTTC0081R";
-pub const INQUIRE_DAILY_CCLD_MOCK_INNER_TR_ID: &str = "VTTC0081R";
+pub const INQUIRE_DAILY_CCLD_VIRTUAL_INNER_TR_ID: &str = "VTTC0081R";
 pub const INQUIRE_DAILY_CCLD_REAL_BEFORE_TR_ID: &str = "CTSC9215R";
-pub const INQUIRE_DAILY_CCLD_MOCK_BEFORE_TR_ID: &str = "VTSC9215R";
+pub const INQUIRE_DAILY_CCLD_VIRTUAL_BEFORE_TR_ID: &str = "VTSC9215R";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum InquireDailyCcldPeriod {
@@ -123,14 +124,14 @@ pub const fn inquire_daily_ccld_tr_id(
         (Environment::Real, InquireDailyCcldPeriod::Inner3Months) => {
             INQUIRE_DAILY_CCLD_REAL_INNER_TR_ID
         }
-        (Environment::Mock, InquireDailyCcldPeriod::Inner3Months) => {
-            INQUIRE_DAILY_CCLD_MOCK_INNER_TR_ID
+        (Environment::Virtual, InquireDailyCcldPeriod::Inner3Months) => {
+            INQUIRE_DAILY_CCLD_VIRTUAL_INNER_TR_ID
         }
         (Environment::Real, InquireDailyCcldPeriod::Before3Months) => {
             INQUIRE_DAILY_CCLD_REAL_BEFORE_TR_ID
         }
-        (Environment::Mock, InquireDailyCcldPeriod::Before3Months) => {
-            INQUIRE_DAILY_CCLD_MOCK_BEFORE_TR_ID
+        (Environment::Virtual, InquireDailyCcldPeriod::Before3Months) => {
+            INQUIRE_DAILY_CCLD_VIRTUAL_BEFORE_TR_ID
         }
     }
 }
@@ -193,5 +194,50 @@ impl<T: HttpClient> Service<'_, T> {
             output2: response.output2,
             continuation: response.continuation,
         })
+    }
+
+    pub async fn inquire_daily_ccld_pages(
+        &self,
+        access_token: &AccessToken,
+        mut request: InquireDailyCcldRequest,
+        limit: PageLimit,
+    ) -> Result<PageCollection<InquireDailyCcldResponse, Continuation>> {
+        let max_pages = limit.max_pages()?;
+        let mut pages = Vec::new();
+
+        loop {
+            let response = match self.inquire_daily_ccld(access_token, request.clone()).await {
+                Ok(response) => response,
+                Err(error) if error.is_rate_limited() => {
+                    return Ok(PageCollection {
+                        pages,
+                        next: request.continuation,
+                        stop_reason: PageStopReason::RateLimited { error },
+                    });
+                }
+                Err(error) => return Err(error),
+            };
+
+            let next = response.continuation.next_request();
+            pages.push(response);
+
+            let Some(next) = next else {
+                return Ok(PageCollection {
+                    pages,
+                    next: None,
+                    stop_reason: PageStopReason::Exhausted,
+                });
+            };
+
+            if max_pages.is_some_and(|max_pages| pages.len() >= max_pages) {
+                return Ok(PageCollection {
+                    pages,
+                    next: Some(next),
+                    stop_reason: PageStopReason::PageLimitReached,
+                });
+            }
+
+            request = request.with_continuation(next);
+        }
     }
 }

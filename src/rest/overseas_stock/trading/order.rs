@@ -13,9 +13,9 @@ use crate::rest::overseas_stock::common::{
 
 pub const ORDER_PATH: &str = "/uapi/overseas-stock/v1/trading/order";
 pub const ORDER_REAL_BUY_TR_ID: &str = "TTTT1002U";
-pub const ORDER_MOCK_BUY_TR_ID: &str = "VTTT1002U";
+pub const ORDER_VIRTUAL_BUY_TR_ID: &str = "VTTT1002U";
 pub const ORDER_REAL_SELL_TR_ID: &str = "TTTT1006U";
-pub const ORDER_MOCK_SELL_TR_ID: &str = "VTTT1006U";
+pub const ORDER_VIRTUAL_SELL_TR_ID: &str = "VTTT1006U";
 
 const OVRS_EXCG_CD: &str = "OVRS_EXCG_CD";
 const PDNO: &str = "PDNO";
@@ -124,9 +124,9 @@ pub struct OrderResponse {
 pub const fn order_tr_id(environment: Environment, side: OrderSide) -> &'static str {
     match (environment, side) {
         (Environment::Real, OrderSide::Buy) => ORDER_REAL_BUY_TR_ID,
-        (Environment::Mock, OrderSide::Buy) => ORDER_MOCK_BUY_TR_ID,
+        (Environment::Virtual, OrderSide::Buy) => ORDER_VIRTUAL_BUY_TR_ID,
         (Environment::Real, OrderSide::Sell) => ORDER_REAL_SELL_TR_ID,
-        (Environment::Mock, OrderSide::Sell) => ORDER_MOCK_SELL_TR_ID,
+        (Environment::Virtual, OrderSide::Sell) => ORDER_VIRTUAL_SELL_TR_ID,
     }
 }
 

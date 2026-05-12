@@ -161,11 +161,11 @@ pub(crate) fn require_account_params(
 pub(crate) fn env_tr_id(
     environment: Environment,
     real_tr_id: &'static str,
-    mock_tr_id: &'static str,
+    virtual_tr_id: &'static str,
 ) -> &'static str {
     match environment {
         Environment::Real => real_tr_id,
-        Environment::Mock => mock_tr_id,
+        Environment::Virtual => virtual_tr_id,
     }
 }
 
