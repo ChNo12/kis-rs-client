@@ -6,8 +6,8 @@ use crate::error::{Error, Result};
 
 pub const REAL_REST_BASE_URL: &str = "https://openapi.koreainvestment.com:9443";
 pub const MOCK_REST_BASE_URL: &str = "https://openapivts.koreainvestment.com:29443";
-pub const REAL_WEBSOCKET_BASE_URL: &str = "wss://ops.koreainvestment.com:21000";
-pub const MOCK_WEBSOCKET_BASE_URL: &str = "wss://vops.koreainvestment.com:31000";
+pub const REAL_WEBSOCKET_BASE_URL: &str = "ws://ops.koreainvestment.com:21000";
+pub const MOCK_WEBSOCKET_BASE_URL: &str = "ws://ops.koreainvestment.com:31000";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum Environment {
