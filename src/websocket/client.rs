@@ -80,15 +80,13 @@ impl WebSocketSession {
             .map_err(|error| Error::http(format!("websocket pong failed: {error}")))
     }
 
-    pub async fn next_frame(&mut self) -> Result<Option<IncomingFrame>> {
+    pub async fn next_text(&mut self) -> Result<Option<String>> {
         while let Some(message) = self.stream.next().await {
             let message = message
                 .map_err(|error| Error::http(format!("websocket receive failed: {error}")))?;
 
             match message {
-                Message::Text(text) => {
-                    return IncomingFrame::parse(&text).map(Some);
-                }
+                Message::Text(text) => return Ok(Some(text.to_string())),
                 Message::Ping(payload) => {
                     self.stream
                         .send(Message::Pong(payload))
@@ -105,6 +103,14 @@ impl WebSocketSession {
         }
 
         Ok(None)
+    }
+
+    pub async fn next_frame(&mut self) -> Result<Option<IncomingFrame>> {
+        let Some(text) = self.next_text().await? else {
+            return Ok(None);
+        };
+
+        IncomingFrame::parse(&text).map(Some)
     }
 
     pub async fn close(mut self) -> Result<()> {

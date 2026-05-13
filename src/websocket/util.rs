@@ -20,8 +20,34 @@ impl<'a> CaretFields<'a> {
         Ok(Self { fields })
     }
 
+    pub(crate) fn new_range(
+        payload: &'a str,
+        min_field_count: usize,
+        max_field_count: usize,
+        context: &'static str,
+    ) -> Result<Self> {
+        let fields = payload.split('^').collect::<Vec<_>>();
+
+        if fields.len() < min_field_count || fields.len() > max_field_count {
+            return Err(Error::parse(format!(
+                "{context} field count mismatch: expected {min_field_count}..={max_field_count}, got {}",
+                fields.len()
+            )));
+        }
+
+        Ok(Self { fields })
+    }
+
     pub(crate) fn text(&self, index: usize) -> String {
         self.fields[index].to_string()
+    }
+
+    pub(crate) fn optional_text(&self, index: usize) -> String {
+        self.fields
+            .get(index)
+            .copied()
+            .unwrap_or_default()
+            .to_string()
     }
 
     pub(crate) fn optional_decimal(
@@ -30,6 +56,18 @@ impl<'a> CaretFields<'a> {
         context: &'static str,
     ) -> Result<Option<Decimal>> {
         parse_optional_decimal(self.fields[index], context)
+    }
+
+    pub(crate) fn optional_decimal_at(
+        &self,
+        index: usize,
+        context: &'static str,
+    ) -> Result<Option<Decimal>> {
+        let Some(value) = self.fields.get(index) else {
+            return Ok(None);
+        };
+
+        parse_optional_decimal(value, context)
     }
 }
 

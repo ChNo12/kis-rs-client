@@ -35,10 +35,16 @@ pub struct OverseasExecutionNotice {
 }
 
 impl OverseasExecutionNotice {
-    pub const FIELD_COUNT: usize = 25;
+    pub const MIN_FIELD_COUNT: usize = 21;
+    pub const MAX_FIELD_COUNT: usize = 25;
 
     pub fn parse(payload: &str) -> Result<Self> {
-        let fields = CaretFields::new(payload, Self::FIELD_COUNT, "overseas execution notice")?;
+        let fields = CaretFields::new_range(
+            payload,
+            Self::MIN_FIELD_COUNT,
+            Self::MAX_FIELD_COUNT,
+            "overseas execution notice",
+        )?;
 
         Ok(Self {
             customer_id: fields.text(0),
@@ -65,11 +71,11 @@ impl OverseasExecutionNotice {
             order_condition: fields.text(18),
             debt_class: fields.text(19),
             debt_date: fields.text(20),
-            start_time: fields.text(21),
-            end_time: fields.text(22),
-            time_division_type: fields.text(23),
+            start_time: fields.optional_text(21),
+            end_time: fields.optional_text(22),
+            time_division_type: fields.optional_text(23),
             conclusion_unit_price12: fields
-                .optional_decimal(24, "overseas execution notice conclusion unit price12")?,
+                .optional_decimal_at(24, "overseas execution notice conclusion unit price12")?,
         })
     }
 }
@@ -93,7 +99,7 @@ impl fmt::Debug for OverseasExecutionNotice {
             .field("accepted", &self.accepted)
             .field("branch_no", &self.branch_no)
             .field("order_quantity", &self.order_quantity)
-            .field("account_name", &self.account_name)
+            .field("account_name", &mask_tail(&self.account_name, 2))
             .field("conclusion_name", &self.conclusion_name)
             .field("order_condition", &self.order_condition)
             .field("debt_class", &self.debt_class)
@@ -135,7 +141,9 @@ mod tests {
 
         let debug = format!("{notice:?}");
         assert!(!debug.contains("12345678"));
+        assert!(!debug.contains("account_name: \"name\""));
         assert!(debug.contains("******78"));
+        assert!(debug.contains("account_name: \"**me\""));
     }
 
     #[test]
@@ -146,5 +154,23 @@ mod tests {
             OverseasExecutionNotice::parse(payload),
             Err(Error::Parse { .. })
         ));
+    }
+
+    #[test]
+    fn overseas_execution_notice_accepts_legacy_21_field_payload() {
+        let payload = "cust^12345678^0001^0000^02^01^00^AAPL^10^145.25^093000^N^2^Y^001^10^name^AAPL INC^00^^20260511";
+
+        let notice = OverseasExecutionNotice::parse(payload).unwrap();
+
+        assert_eq!(notice.customer_id, "cust");
+        assert_eq!(notice.account_no, "12345678");
+        assert_eq!(notice.stock_code, "AAPL");
+        assert_eq!(notice.conclusion_quantity, Some(Decimal::new(10, 0)));
+        assert_eq!(notice.conclusion_unit_price, Some(Decimal::new(14525, 2)));
+        assert_eq!(notice.debt_date, "20260511");
+        assert_eq!(notice.start_time, "");
+        assert_eq!(notice.end_time, "");
+        assert_eq!(notice.time_division_type, "");
+        assert_eq!(notice.conclusion_unit_price12, None);
     }
 }

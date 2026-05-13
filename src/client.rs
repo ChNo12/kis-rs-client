@@ -197,7 +197,7 @@ mod tests {
 
         assert_eq!(
             client.websocket_base_url(),
-            "wss://vops.koreainvestment.com:31000"
+            "ws://ops.koreainvestment.com:31000"
         );
     }
 

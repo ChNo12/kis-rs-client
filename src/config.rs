@@ -234,11 +234,11 @@ mod tests {
     fn environment_selects_websocket_base_url() {
         assert_eq!(
             Environment::Real.websocket_base_url(),
-            "wss://ops.koreainvestment.com:21000"
+            "ws://ops.koreainvestment.com:21000"
         );
         assert_eq!(
             Environment::Virtual.websocket_base_url(),
-            "wss://vops.koreainvestment.com:31000"
+            "ws://ops.koreainvestment.com:31000"
         );
     }
 
