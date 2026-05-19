@@ -203,7 +203,7 @@ async fn live_smoke_virtual_overseas_buy_order_and_cancel() -> Result<()> {
 
 #[cfg(feature = "websocket-client")]
 #[tokio::test]
-//#[ignore = "requires KIS_ENABLE_WS_SMOKE=true; opens a live KIS WebSocket connection"]
+#[ignore = "requires KIS_ENABLE_WS_SMOKE=true; opens a live KIS WebSocket connection"]
 async fn live_smoke_websocket_domestic_price_first_frame() -> Result<()> {
     use std::time::Duration;
 

@@ -96,7 +96,7 @@ impl fmt::Debug for DomesticExecutionNotice {
             .field("accepted", &self.accepted)
             .field("branch_no", &self.branch_no)
             .field("order_quantity", &self.order_quantity)
-            .field("account_name", &self.account_name)
+            .field("account_name", &mask_tail(&self.account_name, 2))
             .field("order_condition_price", &self.order_condition_price)
             .field("order_exchange", &self.order_exchange)
             .field("popup", &self.popup)
@@ -138,7 +138,9 @@ mod tests {
 
         let debug = format!("{notice:?}");
         assert!(!debug.contains("12345678"));
+        assert!(!debug.contains("account_name: \"name\""));
         assert!(debug.contains("******78"));
+        assert!(debug.contains("account_name: \"**me\""));
     }
 
     #[test]
