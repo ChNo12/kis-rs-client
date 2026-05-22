@@ -1,8 +1,9 @@
 #![cfg(feature = "reqwest-client")]
 
-use std::env;
+use std::{env, time::Duration};
 
 use rust_decimal::Decimal;
+use tokio::time::sleep;
 
 use kis_rs_client::rest::domestic_stock::{
     AllQuantityOrder, InquireDailyCcldPeriod, InquireDailyCcldRequest, InquirePriceRequest,
@@ -13,13 +14,16 @@ use kis_rs_client::rest::overseas_stock::{
     InquireCcnlRequest as OverseasInquireCcnlRequest, OrderRequest as OverseasOrderRequest,
     OrderRvsecnclRequest as OverseasOrderRvsecnclRequest, OverseasExchange, OverseasStockCode,
 };
-use kis_rs_client::{Client, ClientBuilder, Error, ReqwestHttpClient, Result};
+use kis_rs_client::{Client, ClientBuilder, Environment, Error, ReqwestHttpClient, Result};
+
+const VIRTUAL_API_CALL_INTERVAL: Duration = Duration::from_millis(600);
 
 #[tokio::test]
 #[ignore = "requires KIS_APP_KEY and KIS_APP_SECRET; read-only live KIS API calls"]
 async fn live_smoke_readonly_domestic_quote_and_today_minute() -> Result<()> {
     let client = client_without_account()?;
     let token = client.issue_token().await?;
+    sleep_for_virtual_rate_limit(&client).await;
     let stock_code = stock_code()?;
 
     let quote = client
@@ -31,6 +35,8 @@ async fn live_smoke_readonly_domestic_quote_and_today_minute() -> Result<()> {
         )
         .await?;
     assert!(quote.current_price().is_some());
+
+    sleep_for_virtual_rate_limit(&client).await;
 
     let minute = client
         .domestic_stock()
@@ -52,6 +58,7 @@ async fn live_smoke_readonly_domestic_quote_and_today_minute() -> Result<()> {
 async fn live_smoke_readonly_domestic_previous_day_minute() -> Result<()> {
     let client = client_without_account()?;
     let token = client.issue_token().await?;
+    sleep_for_virtual_rate_limit(&client).await;
     let stock_code = stock_code()?;
     let smoke_date = required_env("KIS_SMOKE_DATE")?;
 
@@ -80,6 +87,7 @@ async fn live_smoke_readonly_domestic_previous_day_minute() -> Result<()> {
 async fn live_smoke_readonly_order_conclusions() -> Result<()> {
     let client = client_with_account()?;
     let token = client.issue_token().await?;
+    sleep_for_virtual_rate_limit(&client).await;
     let start_date = required_env("KIS_SMOKE_START_DATE")?;
     let end_date = env::var("KIS_SMOKE_END_DATE").unwrap_or_else(|_| start_date.clone());
 
@@ -102,6 +110,8 @@ async fn live_smoke_readonly_order_conclusions() -> Result<()> {
         .await?;
     assert!(!domestic.output1.is_null());
     assert!(!domestic.output2.is_null());
+
+    sleep_for_virtual_rate_limit(&client).await;
 
     let overseas_exchange =
         OverseasExchange::from_kis_code(&optional_env("KIS_OVERSEAS_EXCHANGE", "NASD"))?;
@@ -127,6 +137,7 @@ async fn live_smoke_virtual_domestic_buy_order_and_best_effort_cancel() -> Resul
 
     let client = virtual_client_with_account()?;
     let token = client.issue_token().await?;
+    sleep_for_virtual_rate_limit(&client).await;
     let stock_code = stock_code()?;
     let quantity = limited_quantity("KIS_VIRTUAL_ORDER_QTY")?;
     let price = positive_price_env("KIS_VIRTUAL_DOMESTIC_ORDER_PRICE")?;
@@ -143,6 +154,8 @@ async fn live_smoke_virtual_domestic_buy_order_and_best_effort_cancel() -> Resul
     assert!(!order_no.is_empty());
 
     if let Some(org_no) = optional_output_field(&order.output, &["KRX_FWDG_ORD_ORGNO"]) {
+        sleep_for_virtual_rate_limit(&client).await;
+
         client
             .domestic_stock()
             .trading()
@@ -173,6 +186,7 @@ async fn live_smoke_virtual_overseas_buy_order_and_cancel() -> Result<()> {
 
     let client = virtual_client_with_account()?;
     let token = client.issue_token().await?;
+    sleep_for_virtual_rate_limit(&client).await;
     let exchange = OverseasExchange::from_kis_code(&optional_env("KIS_OVERSEAS_EXCHANGE", "NASD"))?;
     let stock_code = OverseasStockCode::new(optional_env("KIS_OVERSEAS_STOCK_CODE", "AAPL"))?;
     let quantity = limited_quantity("KIS_VIRTUAL_ORDER_QTY")?;
@@ -188,6 +202,8 @@ async fn live_smoke_virtual_overseas_buy_order_and_cancel() -> Result<()> {
         .await?;
     let order_no = required_output_field(&order.output, &["ODNO"])?;
     assert!(!order_no.is_empty());
+
+    sleep_for_virtual_rate_limit(&client).await;
 
     client
         .overseas_stock()
@@ -205,8 +221,6 @@ async fn live_smoke_virtual_overseas_buy_order_and_cancel() -> Result<()> {
 #[tokio::test]
 #[ignore = "requires KIS_ENABLE_WS_SMOKE=true; opens a live KIS WebSocket connection"]
 async fn live_smoke_websocket_domestic_price_first_frame() -> Result<()> {
-    use std::time::Duration;
-
     use kis_rs_client::websocket::{
         DomesticRealtimePriceMarket, IncomingFrame, SubscriptionAction, SubscriptionBook,
         WebSocketClient, domestic,
@@ -301,6 +315,12 @@ fn required_env(name: &'static str) -> Result<String> {
 
 fn optional_env(name: &str, default: &str) -> String {
     env::var(name).unwrap_or_else(|_| default.to_string())
+}
+
+async fn sleep_for_virtual_rate_limit(client: &Client<ReqwestHttpClient>) {
+    if client.config().environment == Environment::Virtual {
+        sleep(VIRTUAL_API_CALL_INTERVAL).await;
+    }
 }
 
 fn ensure_virtual_order_smoke_enabled() -> Result<()> {
