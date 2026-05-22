@@ -42,14 +42,6 @@ impl<'a> CaretFields<'a> {
         self.fields[index].to_string()
     }
 
-    pub(crate) fn optional_text(&self, index: usize) -> String {
-        self.fields
-            .get(index)
-            .copied()
-            .unwrap_or_default()
-            .to_string()
-    }
-
     pub(crate) fn optional_decimal(
         &self,
         index: usize,
@@ -58,16 +50,8 @@ impl<'a> CaretFields<'a> {
         parse_optional_decimal(self.fields[index], context)
     }
 
-    pub(crate) fn optional_decimal_at(
-        &self,
-        index: usize,
-        context: &'static str,
-    ) -> Result<Option<Decimal>> {
-        let Some(value) = self.fields.get(index) else {
-            return Ok(None);
-        };
-
-        parse_optional_decimal(value, context)
+    pub(crate) fn get(&self, index: usize) -> Option<&'a str> {
+        self.fields.get(index).copied()
     }
 }
 

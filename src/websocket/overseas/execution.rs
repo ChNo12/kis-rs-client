@@ -2,8 +2,17 @@ use std::fmt;
 
 use rust_decimal::Decimal;
 
-use crate::error::Result;
-use crate::websocket::util::{CaretFields, mask_tail};
+use crate::error::{Error, Result};
+use crate::websocket::util::{CaretFields, mask_tail, parse_optional_decimal};
+
+const OVERSEAS_PRICE_DECIMAL_SCALE: u32 = 4;
+const ORDER_NO_LEN: usize = 10;
+const SELL_BUY_CLASS_LEN: usize = 2;
+const STOCK_CONCLUSION_TIME_LEN: usize = 6;
+const BRANCH_NO_LEN: usize = 5;
+const DEBT_CLASS_LEN: usize = 2;
+const SPLIT_ORDER_TIME_LEN: usize = 6;
+const TIME_DIVISION_TYPE_LEN: usize = 2;
 
 #[derive(Clone, Eq, PartialEq)]
 pub struct OverseasExecutionNotice {
@@ -49,35 +58,83 @@ impl OverseasExecutionNotice {
         Ok(Self {
             customer_id: fields.text(0),
             account_no: fields.text(1),
-            order_no: fields.text(2),
-            original_order_no: fields.text(3),
-            sell_buy_class: fields.text(4),
+            order_no: normalize_kis_order_no(&fields.text(2)),
+            original_order_no: normalize_kis_order_no(&fields.text(3)),
+            sell_buy_class: zero_pad_numeric_text(&fields.text(4), SELL_BUY_CLASS_LEN),
             receipt_class: fields.text(5),
             order_kind: fields.text(6),
             stock_code: fields.text(7),
             conclusion_quantity: fields
                 .optional_decimal(8, "overseas execution notice conclusion quantity")?,
-            conclusion_unit_price: fields
-                .optional_decimal(9, "overseas execution notice conclusion unit price")?,
-            stock_conclusion_time: fields.text(10),
+            conclusion_unit_price: parse_overseas_price(
+                fields.get(9).unwrap_or_default(),
+                "overseas execution notice conclusion unit price",
+            )?,
+            stock_conclusion_time: zero_pad_numeric_text(
+                &fields.text(10),
+                STOCK_CONCLUSION_TIME_LEN,
+            ),
             refused: fields.text(11),
             concluded: fields.text(12),
             accepted: fields.text(13),
-            branch_no: fields.text(14),
+            branch_no: zero_pad_numeric_text(&fields.text(14), BRANCH_NO_LEN),
             order_quantity: fields
                 .optional_decimal(15, "overseas execution notice order quantity")?,
             account_name: fields.text(16),
             conclusion_name: fields.text(17),
             order_condition: fields.text(18),
-            debt_class: fields.text(19),
+            debt_class: zero_pad_numeric_text(&fields.text(19), DEBT_CLASS_LEN),
             debt_date: fields.text(20),
-            start_time: fields.optional_text(21),
-            end_time: fields.optional_text(22),
-            time_division_type: fields.optional_text(23),
-            conclusion_unit_price12: fields
-                .optional_decimal_at(24, "overseas execution notice conclusion unit price12")?,
+            start_time: zero_pad_numeric_text(
+                fields.get(21).unwrap_or_default(),
+                SPLIT_ORDER_TIME_LEN,
+            ),
+            end_time: zero_pad_numeric_text(
+                fields.get(22).unwrap_or_default(),
+                SPLIT_ORDER_TIME_LEN,
+            ),
+            time_division_type: zero_pad_numeric_text(
+                fields.get(23).unwrap_or_default(),
+                TIME_DIVISION_TYPE_LEN,
+            ),
+            conclusion_unit_price12: parse_overseas_price(
+                fields.get(24).unwrap_or_default(),
+                "overseas execution notice conclusion unit price12",
+            )?,
         })
     }
+}
+
+fn parse_overseas_price(value: &str, context: &'static str) -> Result<Option<Decimal>> {
+    if value.is_empty() || value.contains('.') {
+        return parse_optional_decimal(value, context);
+    }
+
+    let mantissa = value
+        .parse::<i64>()
+        .map_err(|error| Error::parse(format!("failed to parse {context}: {error}")))?;
+
+    Ok(Some(Decimal::new(mantissa, OVERSEAS_PRICE_DECIMAL_SCALE)))
+}
+
+fn normalize_kis_order_no(value: &str) -> String {
+    if value.is_empty()
+        || value.chars().all(|char| char == '0')
+        || !value.chars().all(|char| char.is_ascii_digit())
+        || value.len() >= ORDER_NO_LEN
+    {
+        return value.to_string();
+    }
+
+    format!("{value:0>ORDER_NO_LEN$}")
+}
+
+fn zero_pad_numeric_text(value: &str, len: usize) -> String {
+    if value.is_empty() || !value.chars().all(|char| char.is_ascii_digit()) || value.len() >= len {
+        return value.to_string();
+    }
+
+    format!("{value:0>len$}")
 }
 
 impl fmt::Debug for OverseasExecutionNotice {
@@ -133,7 +190,7 @@ mod tests {
 
         assert_eq!(notice.customer_id, "cust");
         assert_eq!(notice.account_no, "12345678");
-        assert_eq!(notice.order_no, "0001");
+        assert_eq!(notice.order_no, "0000000001");
         assert_eq!(notice.stock_code, "AAPL");
         assert_eq!(notice.conclusion_quantity, Some(Decimal::new(10, 0)));
         assert_eq!(notice.conclusion_unit_price, Some(Decimal::new(14525, 2)));
@@ -172,5 +229,25 @@ mod tests {
         assert_eq!(notice.end_time, "");
         assert_eq!(notice.time_division_type, "");
         assert_eq!(notice.conclusion_unit_price12, None);
+    }
+
+    #[test]
+    fn overseas_execution_notice_normalizes_fixed_point_price_and_order_numbers() {
+        let payload = "cust^12345678^34564^0000^1^0^0^AAPL^10^001480100^93000^N^2^Y^1^10^name^AAPL INC^0^10^20260511^90000^153000^2^3088885";
+
+        let notice = OverseasExecutionNotice::parse(payload).unwrap();
+
+        assert_eq!(notice.order_no, "0000034564");
+        assert_eq!(notice.original_order_no, "0000");
+        assert_eq!(notice.sell_buy_class, "01");
+        assert_eq!(notice.stock_conclusion_time, "093000");
+        assert_eq!(notice.branch_no, "00001");
+        assert_eq!(notice.start_time, "090000");
+        assert_eq!(notice.time_division_type, "02");
+        assert_eq!(notice.conclusion_unit_price, Some(Decimal::new(1480100, 4)));
+        assert_eq!(
+            notice.conclusion_unit_price12,
+            Some(Decimal::new(3088885, 4))
+        );
     }
 }
