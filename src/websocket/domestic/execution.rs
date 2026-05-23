@@ -3,7 +3,15 @@ use std::fmt;
 use rust_decimal::Decimal;
 
 use crate::error::Result;
-use crate::websocket::util::{CaretFields, mask_tail};
+use crate::websocket::util::{
+    CaretFields, mask_tail, normalize_kis_order_no, zero_pad_numeric_text,
+};
+
+const SELL_BUY_CLASS_LEN: usize = 2;
+const ORDER_KIND_LEN: usize = 2;
+const STOCK_CONCLUSION_TIME_LEN: usize = 6;
+const BRANCH_NO_LEN: usize = 5;
+const CREDIT_CLASS_LEN: usize = 2;
 
 #[derive(Clone, Eq, PartialEq)]
 pub struct DomesticExecutionNotice {
@@ -44,22 +52,25 @@ impl DomesticExecutionNotice {
         Ok(Self {
             customer_id: fields.text(0),
             account_no: fields.text(1),
-            order_no: fields.text(2),
-            original_order_no: fields.text(3),
-            sell_buy_class: fields.text(4),
+            order_no: normalize_kis_order_no(&fields.text(2)),
+            original_order_no: normalize_kis_order_no(&fields.text(3)),
+            sell_buy_class: zero_pad_numeric_text(&fields.text(4), SELL_BUY_CLASS_LEN),
             receipt_class: fields.text(5),
-            order_kind: fields.text(6),
+            order_kind: zero_pad_numeric_text(&fields.text(6), ORDER_KIND_LEN),
             order_condition: fields.text(7),
             stock_code: fields.text(8),
             conclusion_quantity: fields
                 .optional_decimal(9, "domestic execution notice conclusion quantity")?,
             conclusion_unit_price: fields
                 .optional_decimal(10, "domestic execution notice conclusion unit price")?,
-            stock_conclusion_time: fields.text(11),
+            stock_conclusion_time: zero_pad_numeric_text(
+                &fields.text(11),
+                STOCK_CONCLUSION_TIME_LEN,
+            ),
             refused: fields.text(12),
             concluded: fields.text(13),
             accepted: fields.text(14),
-            branch_no: fields.text(15),
+            branch_no: zero_pad_numeric_text(&fields.text(15), BRANCH_NO_LEN),
             order_quantity: fields
                 .optional_decimal(16, "domestic execution notice order quantity")?,
             account_name: fields.text(17),
@@ -68,7 +79,7 @@ impl DomesticExecutionNotice {
             order_exchange: fields.text(19),
             popup: fields.text(20),
             filler: fields.text(21),
-            credit_class: fields.text(22),
+            credit_class: zero_pad_numeric_text(&fields.text(22), CREDIT_CLASS_LEN),
             credit_loan_date: fields.text(23),
             conclusion_name: fields.text(24),
             order_price: fields.optional_decimal(25, "domestic execution notice order price")?,
@@ -130,7 +141,7 @@ mod tests {
 
         assert_eq!(notice.customer_id, "cust");
         assert_eq!(notice.account_no, "12345678");
-        assert_eq!(notice.order_no, "0001");
+        assert_eq!(notice.order_no, "0000000001");
         assert_eq!(notice.stock_code, "005930");
         assert_eq!(notice.conclusion_quantity, Some(Decimal::new(10, 0)));
         assert_eq!(notice.conclusion_unit_price, Some(Decimal::new(70000, 0)));
@@ -149,5 +160,20 @@ mod tests {
             DomesticExecutionNotice::parse("cust^12345678"),
             Err(Error::Parse { .. })
         ));
+    }
+
+    #[test]
+    fn domestic_execution_notice_normalizes_fixed_width_numeric_fields() {
+        let payload = "cust^12345678^34564^0000^1^0^0^0^005930^10^70000^93000^N^2^Y^1^10^name^^1^N^^1^20260511^SAMSUNG^70000";
+
+        let notice = DomesticExecutionNotice::parse(payload).unwrap();
+
+        assert_eq!(notice.order_no, "0000034564");
+        assert_eq!(notice.original_order_no, "0000");
+        assert_eq!(notice.sell_buy_class, "01");
+        assert_eq!(notice.order_kind, "00");
+        assert_eq!(notice.stock_conclusion_time, "093000");
+        assert_eq!(notice.branch_no, "00001");
+        assert_eq!(notice.credit_class, "01");
     }
 }

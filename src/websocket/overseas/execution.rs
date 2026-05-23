@@ -3,10 +3,10 @@ use std::fmt;
 use rust_decimal::Decimal;
 
 use crate::error::{Error, Result};
-use crate::websocket::util::{CaretFields, mask_tail, parse_optional_decimal};
+use crate::websocket::util::{
+    CaretFields, mask_tail, normalize_kis_order_no, parse_optional_decimal, zero_pad_numeric_text,
+};
 
-const OVERSEAS_PRICE_DECIMAL_SCALE: u32 = 4;
-const ORDER_NO_LEN: usize = 10;
 const SELL_BUY_CLASS_LEN: usize = 2;
 const STOCK_CONCLUSION_TIME_LEN: usize = 6;
 const BRANCH_NO_LEN: usize = 5;
@@ -54,6 +54,17 @@ impl OverseasExecutionNotice {
             Self::MAX_FIELD_COUNT,
             "overseas execution notice",
         )?;
+        let order_condition = fields.text(18);
+        let conclusion_unit_price = parse_overseas_price(
+            fields.get(9).unwrap_or_default(),
+            &order_condition,
+            "overseas execution notice conclusion unit price",
+        )?;
+        let conclusion_unit_price12 = parse_overseas_price(
+            fields.get(24).unwrap_or_default(),
+            &order_condition,
+            "overseas execution notice conclusion unit price12",
+        )?;
 
         Ok(Self {
             customer_id: fields.text(0),
@@ -66,10 +77,7 @@ impl OverseasExecutionNotice {
             stock_code: fields.text(7),
             conclusion_quantity: fields
                 .optional_decimal(8, "overseas execution notice conclusion quantity")?,
-            conclusion_unit_price: parse_overseas_price(
-                fields.get(9).unwrap_or_default(),
-                "overseas execution notice conclusion unit price",
-            )?,
+            conclusion_unit_price,
             stock_conclusion_time: zero_pad_numeric_text(
                 &fields.text(10),
                 STOCK_CONCLUSION_TIME_LEN,
@@ -82,7 +90,7 @@ impl OverseasExecutionNotice {
                 .optional_decimal(15, "overseas execution notice order quantity")?,
             account_name: fields.text(16),
             conclusion_name: fields.text(17),
-            order_condition: fields.text(18),
+            order_condition,
             debt_class: zero_pad_numeric_text(&fields.text(19), DEBT_CLASS_LEN),
             debt_date: fields.text(20),
             start_time: zero_pad_numeric_text(
@@ -97,44 +105,42 @@ impl OverseasExecutionNotice {
                 fields.get(23).unwrap_or_default(),
                 TIME_DIVISION_TYPE_LEN,
             ),
-            conclusion_unit_price12: parse_overseas_price(
-                fields.get(24).unwrap_or_default(),
-                "overseas execution notice conclusion unit price12",
-            )?,
+            conclusion_unit_price12,
         })
     }
 }
 
-fn parse_overseas_price(value: &str, context: &'static str) -> Result<Option<Decimal>> {
+fn parse_overseas_price(
+    value: &str,
+    order_condition: &str,
+    context: &'static str,
+) -> Result<Option<Decimal>> {
     if value.is_empty() || value.contains('.') {
         return parse_optional_decimal(value, context);
     }
+
+    let scale = overseas_price_decimal_scale(order_condition).ok_or_else(|| {
+        Error::parse(format!(
+            "failed to parse {context}: unknown overseas order condition {order_condition:?}"
+        ))
+    })?;
 
     let mantissa = value
         .parse::<i64>()
         .map_err(|error| Error::parse(format!("failed to parse {context}: {error}")))?;
 
-    Ok(Some(Decimal::new(mantissa, OVERSEAS_PRICE_DECIMAL_SCALE)))
+    Ok(Some(Decimal::new(mantissa, scale)))
 }
 
-fn normalize_kis_order_no(value: &str) -> String {
-    if value.is_empty()
-        || value.chars().all(|char| char == '0')
-        || !value.chars().all(|char| char.is_ascii_digit())
-        || value.len() >= ORDER_NO_LEN
-    {
-        return value.to_string();
+fn overseas_price_decimal_scale(order_condition: &str) -> Option<u32> {
+    match order_condition {
+        "6" | "7" | "8" | "9" => Some(4),
+        "D" => Some(1),
+        "5" | "A" | "B" => Some(3),
+        "4" | "C" => Some(3),
+        "E" | "F" => Some(0),
+        _ => None,
     }
-
-    format!("{value:0>ORDER_NO_LEN$}")
-}
-
-fn zero_pad_numeric_text(value: &str, len: usize) -> String {
-    if value.is_empty() || !value.chars().all(|char| char.is_ascii_digit()) || value.len() >= len {
-        return value.to_string();
-    }
-
-    format!("{value:0>len$}")
 }
 
 impl fmt::Debug for OverseasExecutionNotice {
@@ -233,7 +239,7 @@ mod tests {
 
     #[test]
     fn overseas_execution_notice_normalizes_fixed_point_price_and_order_numbers() {
-        let payload = "cust^12345678^34564^0000^1^0^0^AAPL^10^001480100^93000^N^2^Y^1^10^name^AAPL INC^0^10^20260511^90000^153000^2^3088885";
+        let payload = "cust^12345678^34564^0000^1^0^0^AAPL^10^001480100^93000^N^2^Y^1^10^name^AAPL INC^6^10^20260511^90000^153000^2^3088885";
 
         let notice = OverseasExecutionNotice::parse(payload).unwrap();
 
@@ -242,6 +248,7 @@ mod tests {
         assert_eq!(notice.sell_buy_class, "01");
         assert_eq!(notice.stock_conclusion_time, "093000");
         assert_eq!(notice.branch_no, "00001");
+        assert_eq!(notice.order_condition, "6");
         assert_eq!(notice.start_time, "090000");
         assert_eq!(notice.time_division_type, "02");
         assert_eq!(notice.conclusion_unit_price, Some(Decimal::new(1480100, 4)));
@@ -249,5 +256,29 @@ mod tests {
             notice.conclusion_unit_price12,
             Some(Decimal::new(3088885, 4))
         );
+    }
+
+    #[test]
+    fn overseas_execution_notice_uses_country_specific_price_scale() {
+        let japan = "cust^12345678^34564^0000^1^0^0^7203^10^000001485^93000^N^2^Y^1^10^name^TOYOTA^D^10^20260511^90000^153000^2^000001485";
+        let vietnam = "cust^12345678^34564^0000^1^0^0^FPT^10^000000148^93000^N^2^Y^1^10^name^FPT^E^10^20260511^90000^153000^2^000000148";
+
+        let japan = OverseasExecutionNotice::parse(japan).unwrap();
+        let vietnam = OverseasExecutionNotice::parse(vietnam).unwrap();
+
+        assert_eq!(japan.conclusion_unit_price, Some(Decimal::new(1485, 1)));
+        assert_eq!(japan.conclusion_unit_price12, Some(Decimal::new(1485, 1)));
+        assert_eq!(vietnam.conclusion_unit_price, Some(Decimal::new(148, 0)));
+        assert_eq!(vietnam.conclusion_unit_price12, Some(Decimal::new(148, 0)));
+    }
+
+    #[test]
+    fn overseas_execution_notice_rejects_unknown_country_fixed_point_price() {
+        let payload = "cust^12345678^34564^0000^1^0^0^AAPL^10^001480100^93000^N^2^Y^1^10^name^AAPL INC^0^10^20260511^90000^153000^2^3088885";
+
+        assert!(matches!(
+            OverseasExecutionNotice::parse(payload),
+            Err(Error::Parse { .. })
+        ));
     }
 }

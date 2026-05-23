@@ -2,6 +2,8 @@ use rust_decimal::Decimal;
 
 use crate::error::{Error, Result};
 
+const KIS_ORDER_NO_LEN: usize = 10;
+
 pub(crate) struct CaretFields<'a> {
     fields: Vec<&'a str>,
 }
@@ -67,6 +69,26 @@ pub(crate) fn parse_optional_decimal(
         .parse()
         .map(Some)
         .map_err(|error| Error::parse(format!("failed to parse {context}: {error}")))
+}
+
+pub(crate) fn normalize_kis_order_no(value: &str) -> String {
+    if value.is_empty()
+        || value.chars().all(|char| char == '0')
+        || !value.chars().all(|char| char.is_ascii_digit())
+        || value.len() >= KIS_ORDER_NO_LEN
+    {
+        return value.to_string();
+    }
+
+    format!("{value:0>KIS_ORDER_NO_LEN$}")
+}
+
+pub(crate) fn zero_pad_numeric_text(value: &str, len: usize) -> String {
+    if value.is_empty() || !value.chars().all(|char| char.is_ascii_digit()) || value.len() >= len {
+        return value.to_string();
+    }
+
+    format!("{value:0>len$}")
 }
 
 pub(crate) fn mask_tail(value: &str, visible_tail_len: usize) -> String {
