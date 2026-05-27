@@ -4,7 +4,7 @@ use rust_decimal::Decimal;
 
 use crate::error::Result;
 use crate::websocket::util::{
-    CaretFields, mask_tail, normalize_kis_order_no, parse_optional_decimal, zero_pad_numeric_text,
+    CaretFields, mask_tail, normalize_kis_order_no, zero_pad_numeric_text,
 };
 
 const SELL_BUY_CLASS_LEN: usize = 2;
@@ -54,13 +54,7 @@ impl DomesticExecutionNotice {
             Self::MAX_FIELD_COUNT,
             "domestic execution notice",
         )?;
-
-        let order_price = match fields.get(25) {
-            Some(value) if !value.is_empty() => {
-                parse_optional_decimal(value, "domestic execution notice order price")?
-            }
-            _ => None,
-        };
+        let tail = DomesticExecutionNoticeTail::parse(&fields);
 
         Ok(Self {
             customer_id: fields.text(0),
@@ -87,17 +81,84 @@ impl DomesticExecutionNotice {
             order_quantity: fields
                 .optional_decimal(16, "domestic execution notice order quantity")?,
             account_name: fields.text(17),
-            order_condition_price: fields
-                .optional_decimal(18, "domestic execution notice order condition price")?,
-            order_exchange: fields.text(19),
-            popup: fields.text(20),
-            filler: fields.text(21),
-            credit_class: zero_pad_numeric_text(&fields.text(22), CREDIT_CLASS_LEN),
-            credit_loan_date: fields.get(23).map(str::to_string).unwrap_or_default(),
-            conclusion_name: fields.get(24).map(str::to_string).unwrap_or_default(),
-            order_price,
+            order_condition_price: tail.order_condition_price,
+            order_exchange: tail.order_exchange,
+            popup: tail.popup,
+            filler: tail.filler,
+            credit_class: zero_pad_numeric_text(&tail.credit_class, CREDIT_CLASS_LEN),
+            credit_loan_date: tail.credit_loan_date,
+            conclusion_name: tail.conclusion_name,
+            order_price: tail.order_price,
         })
     }
+}
+
+struct DomesticExecutionNoticeTail {
+    order_condition_price: Option<Decimal>,
+    order_exchange: String,
+    popup: String,
+    filler: String,
+    credit_class: String,
+    credit_loan_date: String,
+    conclusion_name: String,
+    order_price: Option<Decimal>,
+}
+
+impl DomesticExecutionNoticeTail {
+    fn parse(fields: &CaretFields<'_>) -> Self {
+        if fields.len() == DomesticExecutionNotice::MIN_FIELD_COUNT
+            && is_compacted_virtual_tail(fields)
+        {
+            let compacted_order = fields.text(18);
+            let mut chars = compacted_order.chars();
+            let order_exchange = chars.next().map(String::from).unwrap_or_default();
+            let popup = chars.collect::<String>();
+
+            return Self {
+                order_condition_price: None,
+                order_exchange,
+                popup,
+                filler: String::new(),
+                credit_class: fields.text(19),
+                credit_loan_date: fields.text(20),
+                conclusion_name: fields.text(21),
+                order_price: lenient_decimal(fields.get(22)),
+            };
+        }
+
+        Self {
+            order_condition_price: fields
+                .lenient_optional_decimal(18, "domestic execution notice order condition price"),
+            order_exchange: fields.get(19).map(str::to_string).unwrap_or_default(),
+            popup: fields.get(20).map(str::to_string).unwrap_or_default(),
+            filler: fields.get(21).map(str::to_string).unwrap_or_default(),
+            credit_class: fields.get(22).map(str::to_string).unwrap_or_default(),
+            credit_loan_date: fields.get(23).map(str::to_string).unwrap_or_default(),
+            conclusion_name: fields.get(24).map(str::to_string).unwrap_or_default(),
+            order_price: lenient_decimal(fields.get(25)),
+        }
+    }
+}
+
+fn is_compacted_virtual_tail(fields: &CaretFields<'_>) -> bool {
+    let Some(order_exchange_and_popup) = fields.get(18) else {
+        return false;
+    };
+    let Some(credit_class) = fields.get(19) else {
+        return false;
+    };
+
+    order_exchange_and_popup.chars().count() == 2
+        && order_exchange_and_popup
+            .chars()
+            .all(|char| char.is_ascii_alphanumeric())
+        && credit_class.chars().all(|char| char.is_ascii_digit())
+}
+
+fn lenient_decimal(value: Option<&str>) -> Option<Decimal> {
+    value
+        .filter(|value| !value.is_empty())
+        .and_then(|value| value.parse().ok())
 }
 
 impl fmt::Debug for DomesticExecutionNotice {
@@ -191,6 +252,25 @@ mod tests {
         assert_eq!(notice.credit_class, "01");
         assert_eq!(notice.credit_loan_date, "");
         assert_eq!(notice.conclusion_name, "");
+        assert_eq!(notice.order_price, None);
+    }
+
+    #[test]
+    fn domestic_execution_notice_parses_compacted_virtual_tail() {
+        let payload = "cust^12345678^17214^^02^0^00^0^472150^1^23000^104556^0^1^1^00950^1^name^1Y^10^^TIGER 배당커버드콜액티브^";
+
+        let notice = DomesticExecutionNotice::parse(payload).unwrap();
+
+        assert_eq!(notice.order_no, "0000017214");
+        assert_eq!(notice.original_order_no, "");
+        assert_eq!(notice.stock_code, "472150");
+        assert_eq!(notice.order_condition_price, None);
+        assert_eq!(notice.order_exchange, "1");
+        assert_eq!(notice.popup, "Y");
+        assert_eq!(notice.filler, "");
+        assert_eq!(notice.credit_class, "10");
+        assert_eq!(notice.credit_loan_date, "");
+        assert_eq!(notice.conclusion_name, "TIGER 배당커버드콜액티브");
         assert_eq!(notice.order_price, None);
     }
 

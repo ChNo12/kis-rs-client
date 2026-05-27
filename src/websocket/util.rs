@@ -44,12 +44,27 @@ impl<'a> CaretFields<'a> {
         self.fields[index].to_string()
     }
 
+    pub(crate) fn len(&self) -> usize {
+        self.fields.len()
+    }
+
     pub(crate) fn optional_decimal(
         &self,
         index: usize,
         context: &'static str,
     ) -> Result<Option<Decimal>> {
         parse_optional_decimal(self.fields[index], context)
+    }
+
+    /// 비-decimal 값이 와도 fail 하지 않고 `None` 으로 처리한다. KIS 가상계좌가
+    /// 일부 필드에 placeholder 문자열을 보내는 케이스 — 본 필드가 회계/체결
+    /// critical 이 아닐 때만 사용.
+    pub(crate) fn lenient_optional_decimal(
+        &self,
+        index: usize,
+        context: &'static str,
+    ) -> Option<Decimal> {
+        parse_optional_decimal_lenient(self.fields[index], context)
     }
 
     pub(crate) fn get(&self, index: usize) -> Option<&'a str> {
@@ -69,6 +84,18 @@ pub(crate) fn parse_optional_decimal(
         .parse()
         .map(Some)
         .map_err(|error| Error::parse(format!("failed to parse {context}: {error}")))
+}
+
+/// 비-decimal 값을 fail 시키지 않고 `None` 으로 처리. 호출자는 본 필드가 회계
+/// critical 이 아닐 때만 사용 — KIS 가상계좌 placeholder 문자열 같은 케이스 흡수.
+pub(crate) fn parse_optional_decimal_lenient(
+    value: &str,
+    _context: &'static str,
+) -> Option<Decimal> {
+    if value.is_empty() {
+        return None;
+    }
+    value.parse().ok()
 }
 
 pub(crate) fn normalize_kis_order_no(value: &str) -> String {
