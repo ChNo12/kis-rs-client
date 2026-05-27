@@ -4,7 +4,7 @@ use rust_decimal::Decimal;
 
 use crate::error::Result;
 use crate::websocket::util::{
-    CaretFields, mask_tail, normalize_kis_order_no, zero_pad_numeric_text,
+    CaretFields, mask_tail, normalize_kis_order_no, parse_optional_decimal, zero_pad_numeric_text,
 };
 
 const SELL_BUY_CLASS_LEN: usize = 2;
@@ -44,10 +44,23 @@ pub struct DomesticExecutionNotice {
 }
 
 impl DomesticExecutionNotice {
-    pub const FIELD_COUNT: usize = 26;
+    pub const MIN_FIELD_COUNT: usize = 23;
+    pub const MAX_FIELD_COUNT: usize = 26;
 
     pub fn parse(payload: &str) -> Result<Self> {
-        let fields = CaretFields::new(payload, Self::FIELD_COUNT, "domestic execution notice")?;
+        let fields = CaretFields::new_range(
+            payload,
+            Self::MIN_FIELD_COUNT,
+            Self::MAX_FIELD_COUNT,
+            "domestic execution notice",
+        )?;
+
+        let order_price = match fields.get(25) {
+            Some(value) if !value.is_empty() => {
+                parse_optional_decimal(value, "domestic execution notice order price")?
+            }
+            _ => None,
+        };
 
         Ok(Self {
             customer_id: fields.text(0),
@@ -80,9 +93,9 @@ impl DomesticExecutionNotice {
             popup: fields.text(20),
             filler: fields.text(21),
             credit_class: zero_pad_numeric_text(&fields.text(22), CREDIT_CLASS_LEN),
-            credit_loan_date: fields.text(23),
-            conclusion_name: fields.text(24),
-            order_price: fields.optional_decimal(25, "domestic execution notice order price")?,
+            credit_loan_date: fields.get(23).map(str::to_string).unwrap_or_default(),
+            conclusion_name: fields.get(24).map(str::to_string).unwrap_or_default(),
+            order_price,
         })
     }
 }
@@ -160,6 +173,25 @@ mod tests {
             DomesticExecutionNotice::parse("cust^12345678"),
             Err(Error::Parse { .. })
         ));
+    }
+
+    #[test]
+    fn domestic_execution_notice_accepts_virtual_23_field_payload() {
+        let payload =
+            "cust^12345678^34564^0000^1^0^0^0^005930^10^70000^93000^N^2^Y^1^10^name^^1^N^^1";
+
+        let notice = DomesticExecutionNotice::parse(payload).unwrap();
+
+        assert_eq!(notice.customer_id, "cust");
+        assert_eq!(notice.account_no, "12345678");
+        assert_eq!(notice.order_no, "0000034564");
+        assert_eq!(notice.stock_code, "005930");
+        assert_eq!(notice.conclusion_quantity, Some(Decimal::new(10, 0)));
+        assert_eq!(notice.conclusion_unit_price, Some(Decimal::new(70000, 0)));
+        assert_eq!(notice.credit_class, "01");
+        assert_eq!(notice.credit_loan_date, "");
+        assert_eq!(notice.conclusion_name, "");
+        assert_eq!(notice.order_price, None);
     }
 
     #[test]

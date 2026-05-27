@@ -14,9 +14,19 @@ use kis_rs_client::rest::overseas_stock::{
     InquireCcnlRequest as OverseasInquireCcnlRequest, OrderRequest as OverseasOrderRequest,
     OrderRvsecnclRequest as OverseasOrderRvsecnclRequest, OverseasExchange, OverseasStockCode,
 };
+#[cfg(feature = "websocket-client")]
+use kis_rs_client::websocket::{
+    DomesticExecutionNotice, ExecutionNoticeCipher, IncomingFrame, OverseasExecutionNotice,
+    Subscription, SubscriptionAction, SubscriptionBook, WebSocketClient, WebSocketSession,
+    domestic, overseas,
+};
 use kis_rs_client::{Client, ClientBuilder, Environment, Error, ReqwestHttpClient, Result};
 
 const VIRTUAL_API_CALL_INTERVAL: Duration = Duration::from_millis(600);
+#[cfg(feature = "websocket-client")]
+const EXECUTION_NOTICE_WARMUP: Duration = Duration::from_secs(3);
+#[cfg(feature = "websocket-client")]
+const EXECUTION_NOTICE_TIMEOUT: Duration = Duration::from_secs(30);
 
 #[tokio::test]
 #[ignore = "requires KIS_APP_KEY and KIS_APP_SECRET; read-only live KIS API calls"]
@@ -259,6 +269,310 @@ async fn live_smoke_websocket_domestic_price_first_frame() -> Result<()> {
     Ok(())
 }
 
+#[cfg(feature = "websocket-client")]
+#[tokio::test]
+#[ignore = "requires KIS_ENABLE_WS_SMOKE=true and KIS_ENABLE_VIRTUAL_ORDER_SMOKE=true; creates a virtual domestic stock order"]
+async fn live_smoke_websocket_virtual_domestic_execution_notice_after_order() -> Result<()> {
+    ensure_websocket_smoke_enabled()?;
+    ensure_virtual_order_smoke_enabled()?;
+
+    let client = virtual_client_with_account()?;
+    let token = client.issue_token().await?;
+    sleep_for_virtual_rate_limit(&client).await;
+
+    let stock_code = stock_code()?;
+    let stock_code_text = stock_code.as_str().to_string();
+    let quantity = limited_quantity("KIS_VIRTUAL_ORDER_QTY")?;
+    let price = positive_price_env("KIS_VIRTUAL_DOMESTIC_ORDER_PRICE")?;
+    let (mut session, cipher) = connect_execution_notice_session(
+        &client,
+        domestic::execution_notice_subscription(
+            SubscriptionAction::Subscribe,
+            Environment::Virtual,
+            execution_notice_hts_id()?,
+        )?,
+        "domestic execution notice",
+    )
+    .await?;
+
+    let order = client
+        .domestic_stock()
+        .trading()
+        .order_cash(
+            &token.access_token,
+            OrderCashRequest::buy(stock_code, "00", &quantity, &price, "KRX")?,
+        )
+        .await?;
+    let order_no = required_output_field(&order.output, &["ODNO"])?;
+
+    if let Some(org_no) = optional_output_field(&order.output, &["KRX_FWDG_ORD_ORGNO"]) {
+        sleep_for_virtual_rate_limit(&client).await;
+
+        if let Err(error) = client
+            .domestic_stock()
+            .trading()
+            .order_rvsecncl(
+                &token.access_token,
+                DomesticOrderRvsecnclRequest::cancel(
+                    org_no,
+                    &order_no,
+                    "00",
+                    &quantity,
+                    "0",
+                    AllQuantityOrder::All,
+                    "KRX",
+                )?,
+            )
+            .await
+        {
+            eprintln!("domestic virtual cancel failed after notice smoke order: {error}");
+        }
+    } else {
+        eprintln!("domestic virtual cancel skipped: KRX_FWDG_ORD_ORGNO is missing in order output");
+    }
+
+    let notice = wait_for_domestic_execution_notice(&mut session, &cipher, &order_no).await?;
+    assert_eq!(notice.stock_code, stock_code_text);
+    assert!(
+        execution_notice_order_no_matches(&notice.order_no, &order_no)
+            || execution_notice_order_no_matches(&notice.original_order_no, &order_no)
+    );
+    session.close().await?;
+
+    Ok(())
+}
+
+#[cfg(feature = "websocket-client")]
+#[tokio::test]
+#[ignore = "requires KIS_ENABLE_WS_SMOKE=true and KIS_ENABLE_VIRTUAL_ORDER_SMOKE=true; creates a virtual overseas stock order"]
+async fn live_smoke_websocket_virtual_overseas_execution_notice_after_order() -> Result<()> {
+    ensure_websocket_smoke_enabled()?;
+    ensure_virtual_order_smoke_enabled()?;
+
+    let client = virtual_client_with_account()?;
+    let token = client.issue_token().await?;
+    sleep_for_virtual_rate_limit(&client).await;
+
+    let exchange = OverseasExchange::from_kis_code(&optional_env("KIS_OVERSEAS_EXCHANGE", "NASD"))?;
+    let stock_code = OverseasStockCode::new(optional_env("KIS_OVERSEAS_STOCK_CODE", "AAPL"))?;
+    let stock_code_text = stock_code.as_str().to_string();
+    let quantity = limited_quantity("KIS_VIRTUAL_ORDER_QTY")?;
+    let price = positive_price_env("KIS_VIRTUAL_OVERSEAS_ORDER_PRICE")?;
+    let (mut session, cipher) = connect_execution_notice_session(
+        &client,
+        overseas::execution_notice_subscription(
+            SubscriptionAction::Subscribe,
+            Environment::Virtual,
+            execution_notice_hts_id()?,
+        )?,
+        "overseas execution notice",
+    )
+    .await?;
+
+    let order = client
+        .overseas_stock()
+        .trading()
+        .order(
+            &token.access_token,
+            OverseasOrderRequest::buy(exchange, stock_code.clone(), &quantity, &price, "00")?,
+        )
+        .await?;
+    let order_no = required_output_field(&order.output, &["ODNO"])?;
+
+    sleep_for_virtual_rate_limit(&client).await;
+
+    if let Err(error) = client
+        .overseas_stock()
+        .trading()
+        .order_rvsecncl(
+            &token.access_token,
+            OverseasOrderRvsecnclRequest::cancel(
+                exchange,
+                stock_code,
+                &order_no,
+                quantity.clone(),
+                "0",
+            )?,
+        )
+        .await
+    {
+        eprintln!("overseas virtual cancel failed after notice smoke order: {error}");
+    }
+
+    let notice = wait_for_overseas_execution_notice(&mut session, &cipher, &order_no).await?;
+    assert_eq!(notice.stock_code, stock_code_text);
+    assert!(
+        execution_notice_order_no_matches(&notice.order_no, &order_no)
+            || execution_notice_order_no_matches(&notice.original_order_no, &order_no)
+    );
+    session.close().await?;
+
+    Ok(())
+}
+
+#[cfg(feature = "websocket-client")]
+async fn connect_execution_notice_session(
+    client: &Client<ReqwestHttpClient>,
+    subscription: Subscription,
+    context: &'static str,
+) -> Result<(WebSocketSession, ExecutionNoticeCipher)> {
+    let approval = client.issue_approval_key().await?;
+    sleep_for_virtual_rate_limit(client).await;
+
+    let mut book = SubscriptionBook::new();
+    book.add(subscription);
+
+    let websocket = WebSocketClient::new(client.websocket_base_url());
+    let mut session = websocket
+        .connect_with_subscriptions(&approval.approval_key, &book)
+        .await?;
+    let cipher = wait_for_execution_notice_cipher(&mut session, context).await?;
+    sleep(EXECUTION_NOTICE_WARMUP).await;
+
+    Ok((session, cipher))
+}
+
+#[cfg(feature = "websocket-client")]
+async fn wait_for_execution_notice_cipher(
+    session: &mut WebSocketSession,
+    context: &'static str,
+) -> Result<ExecutionNoticeCipher> {
+    tokio::time::timeout(EXECUTION_NOTICE_TIMEOUT, async {
+        loop {
+            let Some(frame) = next_frame_responding_to_ping(session).await? else {
+                return Err(Error::http(format!(
+                    "websocket closed before {context} cipher was ready"
+                )));
+            };
+
+            let IncomingFrame::System(message) = frame else {
+                continue;
+            };
+
+            if message.is_ping_pong() {
+                continue;
+            }
+
+            if !message.is_success() {
+                return Err(system_message_error(&message, context));
+            }
+
+            if let Some(cipher) = ExecutionNoticeCipher::from_system_message(&message)? {
+                return Ok(cipher);
+            }
+        }
+    })
+    .await
+    .map_err(|_| Error::http(format!("timed out waiting for {context} cipher")))?
+}
+
+#[cfg(feature = "websocket-client")]
+async fn wait_for_domestic_execution_notice(
+    session: &mut WebSocketSession,
+    cipher: &ExecutionNoticeCipher,
+    expected_order_no: &str,
+) -> Result<DomesticExecutionNotice> {
+    tokio::time::timeout(EXECUTION_NOTICE_TIMEOUT, async {
+        loop {
+            let Some(frame) = next_frame_responding_to_ping(session).await? else {
+                return Err(Error::http(
+                    "websocket closed before domestic execution notice arrived",
+                ));
+            };
+
+            let IncomingFrame::Data(frame) = frame else {
+                continue;
+            };
+
+            if !frame.is_domestic_execution_notice() {
+                continue;
+            }
+
+            let decrypted = cipher.decrypt_base64(&frame.payload)?;
+            let notice = DomesticExecutionNotice::parse(&decrypted)?;
+
+            if execution_notice_order_no_matches(&notice.order_no, expected_order_no)
+                || execution_notice_order_no_matches(&notice.original_order_no, expected_order_no)
+            {
+                return Ok(notice);
+            }
+        }
+    })
+    .await
+    .map_err(|_| Error::http("timed out waiting for domestic execution notice"))?
+}
+
+#[cfg(feature = "websocket-client")]
+async fn wait_for_overseas_execution_notice(
+    session: &mut WebSocketSession,
+    cipher: &ExecutionNoticeCipher,
+    expected_order_no: &str,
+) -> Result<OverseasExecutionNotice> {
+    tokio::time::timeout(EXECUTION_NOTICE_TIMEOUT, async {
+        loop {
+            let Some(frame) = next_frame_responding_to_ping(session).await? else {
+                return Err(Error::http(
+                    "websocket closed before overseas execution notice arrived",
+                ));
+            };
+
+            let IncomingFrame::Data(frame) = frame else {
+                continue;
+            };
+
+            if !frame.is_overseas_execution_notice() {
+                continue;
+            }
+
+            let decrypted = cipher.decrypt_base64(&frame.payload)?;
+            let notice = OverseasExecutionNotice::parse(&decrypted)?;
+
+            if execution_notice_order_no_matches(&notice.order_no, expected_order_no)
+                || execution_notice_order_no_matches(&notice.original_order_no, expected_order_no)
+            {
+                return Ok(notice);
+            }
+        }
+    })
+    .await
+    .map_err(|_| Error::http("timed out waiting for overseas execution notice"))?
+}
+
+#[cfg(feature = "websocket-client")]
+async fn next_frame_responding_to_ping(
+    session: &mut WebSocketSession,
+) -> Result<Option<IncomingFrame>> {
+    let Some(text) = session.next_text().await? else {
+        return Ok(None);
+    };
+    let frame = IncomingFrame::parse(&text)?;
+
+    if let IncomingFrame::System(message) = &frame
+        && message.is_ping_pong()
+    {
+        session.send_pong_text(&text).await?;
+    }
+
+    Ok(Some(frame))
+}
+
+#[cfg(feature = "websocket-client")]
+fn system_message_error(message: &kis_rs_client::websocket::SystemMessage, context: &str) -> Error {
+    let code = message.body.as_ref().and_then(|body| body.msg_cd.clone());
+    let text = message
+        .body
+        .as_ref()
+        .and_then(|body| body.msg1.as_deref())
+        .unwrap_or("websocket subscription failed");
+
+    Error::api(code, format!("{context}: {text}"))
+}
+
+#[cfg(feature = "websocket-client")]
+fn execution_notice_order_no_matches(actual: &str, expected: &str) -> bool {
+    actual == expected || actual.trim_start_matches('0') == expected.trim_start_matches('0')
+}
+
 fn client_without_account() -> Result<Client<ReqwestHttpClient>> {
     base_builder()?.build_reqwest()
 }
@@ -331,6 +645,22 @@ fn ensure_virtual_order_smoke_enabled() -> Result<()> {
             "KIS_ENABLE_VIRTUAL_ORDER_SMOKE=true is required for virtual order smoke tests",
         ))
     }
+}
+
+#[cfg(feature = "websocket-client")]
+fn ensure_websocket_smoke_enabled() -> Result<()> {
+    if env::var("KIS_ENABLE_WS_SMOKE").as_deref() == Ok("true") {
+        Ok(())
+    } else {
+        Err(Error::config(
+            "KIS_ENABLE_WS_SMOKE=true is required for websocket smoke tests",
+        ))
+    }
+}
+
+#[cfg(feature = "websocket-client")]
+fn execution_notice_hts_id() -> Result<String> {
+    required_env("KIS_HTS_ID")
 }
 
 fn limited_quantity(name: &'static str) -> Result<String> {
