@@ -22,11 +22,13 @@ use kis_rs_client::websocket::{
 };
 use kis_rs_client::{Client, ClientBuilder, Environment, Error, ReqwestHttpClient, Result};
 
-const VIRTUAL_API_CALL_INTERVAL: Duration = Duration::from_millis(600);
+const VIRTUAL_API_CALL_INTERVAL: Duration = Duration::from_millis(1000);
 #[cfg(feature = "websocket-client")]
 const EXECUTION_NOTICE_WARMUP: Duration = Duration::from_secs(3);
 #[cfg(feature = "websocket-client")]
 const EXECUTION_NOTICE_TIMEOUT: Duration = Duration::from_secs(30);
+#[cfg(feature = "websocket-client")]
+const DEBUG_EXECUTION_NOTICE_RAW_ENV: &str = "KIS_DEBUG_EXECUTION_NOTICE_RAW";
 
 #[tokio::test]
 #[ignore = "requires KIS_APP_KEY and KIS_APP_SECRET; read-only live KIS API calls"]
@@ -304,8 +306,17 @@ async fn live_smoke_websocket_virtual_domestic_execution_notice_after_order() ->
         )
         .await?;
     let order_no = required_output_field(&order.output, &["ODNO"])?;
+    let org_no = optional_output_field(&order.output, &["KRX_FWDG_ORD_ORGNO"]);
+    eprintln!(
+        "domestic virtual order response odno={} krx_fwdg_ord_orgno={} symbol={} quantity={} price={}",
+        order_no,
+        org_no.as_deref().unwrap_or(""),
+        stock_code_text,
+        quantity,
+        price,
+    );
 
-    if let Some(org_no) = optional_output_field(&order.output, &["KRX_FWDG_ORD_ORGNO"]) {
+    if let Some(org_no) = org_no.as_deref() {
         sleep_for_virtual_rate_limit(&client).await;
 
         if let Err(error) = client
@@ -378,6 +389,14 @@ async fn live_smoke_websocket_virtual_overseas_execution_notice_after_order() ->
         )
         .await?;
     let order_no = required_output_field(&order.output, &["ODNO"])?;
+    eprintln!(
+        "overseas virtual order response odno={} exchange={} symbol={} quantity={} price={}",
+        order_no,
+        exchange.as_str(),
+        stock_code_text,
+        quantity,
+        price,
+    );
 
     sleep_for_virtual_rate_limit(&client).await;
 
@@ -458,6 +477,14 @@ async fn wait_for_execution_notice_cipher(
             }
 
             if let Some(cipher) = ExecutionNoticeCipher::from_system_message(&message)? {
+                if debug_execution_notice_raw_enabled() {
+                    eprintln!(
+                        "{context} cipher key={} iv={}",
+                        message.encryption_key().unwrap_or(""),
+                        message.encryption_iv().unwrap_or(""),
+                    );
+                }
+
                 return Ok(cipher);
             }
         }
@@ -489,11 +516,20 @@ async fn wait_for_domestic_execution_notice(
             }
 
             let decrypted = cipher.decrypt_base64(&frame.payload)?;
+            if debug_execution_notice_raw_enabled() {
+                eprintln!("domestic execution notice decrypted={decrypted:?}");
+            }
+            let field_count = decrypted.split('^').count();
+            let tail_fields = execution_notice_tail_fields(&decrypted, 18);
             let notice = DomesticExecutionNotice::parse(&decrypted)?;
 
             if execution_notice_order_no_matches(&notice.order_no, expected_order_no)
                 || execution_notice_order_no_matches(&notice.original_order_no, expected_order_no)
             {
+                eprintln!(
+                    "domestic execution notice received field_count={} tail_fields=[{}] notice={:?}",
+                    field_count, tail_fields, notice,
+                );
                 return Ok(notice);
             }
         }
@@ -525,11 +561,20 @@ async fn wait_for_overseas_execution_notice(
             }
 
             let decrypted = cipher.decrypt_base64(&frame.payload)?;
+            if debug_execution_notice_raw_enabled() {
+                eprintln!("overseas execution notice decrypted={decrypted:?}");
+            }
+            let field_count = decrypted.split('^').count();
+            let tail_fields = execution_notice_tail_fields(&decrypted, 0);
             let notice = OverseasExecutionNotice::parse(&decrypted)?;
 
             if execution_notice_order_no_matches(&notice.order_no, expected_order_no)
                 || execution_notice_order_no_matches(&notice.original_order_no, expected_order_no)
             {
+                eprintln!(
+                    "overseas execution notice received field_count={} tail_fields=[{}] notice={:?}",
+                    field_count, tail_fields, notice,
+                );
                 return Ok(notice);
             }
         }
@@ -571,6 +616,22 @@ fn system_message_error(message: &kis_rs_client::websocket::SystemMessage, conte
 #[cfg(feature = "websocket-client")]
 fn execution_notice_order_no_matches(actual: &str, expected: &str) -> bool {
     actual == expected || actual.trim_start_matches('0') == expected.trim_start_matches('0')
+}
+
+#[cfg(feature = "websocket-client")]
+fn execution_notice_tail_fields(payload: &str, start_index: usize) -> String {
+    payload
+        .split('^')
+        .enumerate()
+        .skip(start_index)
+        .map(|(index, value)| format!("{index}:{value:?}"))
+        .collect::<Vec<_>>()
+        .join(", ")
+}
+
+#[cfg(feature = "websocket-client")]
+fn debug_execution_notice_raw_enabled() -> bool {
+    env::var(DEBUG_EXECUTION_NOTICE_RAW_ENV).as_deref() == Ok("true")
 }
 
 fn client_without_account() -> Result<Client<ReqwestHttpClient>> {

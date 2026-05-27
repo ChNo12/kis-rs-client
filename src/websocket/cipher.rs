@@ -3,7 +3,7 @@ use std::fmt;
 #[cfg(feature = "websocket-client")]
 use aes::Aes256;
 #[cfg(feature = "websocket-client")]
-use aes::cipher::{BlockDecryptMut, KeyIvInit, block_padding::Pkcs7};
+use aes::cipher::{BlockModeDecrypt, KeyIvInit, block_padding::Pkcs7};
 #[cfg(feature = "websocket-client")]
 use base64::Engine;
 #[cfg(feature = "websocket-client")]
@@ -54,16 +54,19 @@ impl ExecutionNoticeCipher {
             ))
         })?;
 
-        let decrypted = Aes256CbcDecryptor::new(
-            self.key.expose_secret().as_bytes().into(),
-            self.iv.expose_secret().as_bytes().into(),
+        let decryptor = Aes256CbcDecryptor::new_from_slices(
+            self.key.expose_secret().as_bytes(),
+            self.iv.expose_secret().as_bytes(),
         )
-        .decrypt_padded_vec_mut::<Pkcs7>(&encrypted)
-        .map_err(|error| {
-            Error::parse(format!(
-                "failed to decrypt execution notice payload: {error}"
-            ))
-        })?;
+        .map_err(|error| Error::config(format!("invalid execution notice cipher: {error}")))?;
+
+        let decrypted = decryptor
+            .decrypt_padded_vec::<Pkcs7>(&encrypted)
+            .map_err(|error| {
+                Error::parse(format!(
+                    "failed to decrypt execution notice payload: {error}"
+                ))
+            })?;
 
         String::from_utf8(decrypted).map_err(|error| {
             Error::parse(format!(
