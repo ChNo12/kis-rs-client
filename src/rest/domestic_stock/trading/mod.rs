@@ -1,10 +1,15 @@
 mod common;
+mod inquire_balance;
 mod inquire_daily_ccld;
 mod inquire_psbl_rvsecncl;
 mod order_cash;
 mod order_rvsecncl;
 
 pub use common::{AllQuantityOrder, OrderSide, ReviseCancel};
+pub use inquire_balance::{
+    INQUIRE_BALANCE_PATH, INQUIRE_BALANCE_REAL_TR_ID, INQUIRE_BALANCE_VIRTUAL_TR_ID,
+    InquireBalanceRequest, InquireBalanceResponse,
+};
 pub use inquire_daily_ccld::{
     INQUIRE_DAILY_CCLD_PATH, INQUIRE_DAILY_CCLD_REAL_BEFORE_TR_ID,
     INQUIRE_DAILY_CCLD_REAL_INNER_TR_ID, INQUIRE_DAILY_CCLD_VIRTUAL_BEFORE_TR_ID,

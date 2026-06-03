@@ -3,8 +3,9 @@ pub mod trading;
 
 pub use common::{Continuation, OrderSide, OverseasExchange, OverseasStockCode};
 pub use trading::{
-    InquireCcnlRequest, InquireCcnlResponse, OrderRequest, OrderResponse, OrderRvsecnclRequest,
-    OrderRvsecnclResponse, ReviseCancel,
+    InquireBalanceRequest, InquireBalanceResponse, InquireCcnlRequest, InquireCcnlResponse,
+    InquirePresentBalanceRequest, InquirePresentBalanceResponse, OrderRequest, OrderResponse,
+    OrderRvsecnclRequest, OrderRvsecnclResponse, ReviseCancel,
 };
 
 use crate::client::Client;

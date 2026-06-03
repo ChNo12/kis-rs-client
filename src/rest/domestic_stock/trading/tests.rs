@@ -1,8 +1,9 @@
 use super::common::{
-    ACNT_PRDT_CD, CANO, CCLD_DVSN, CTX_AREA_FK100, CTX_AREA_NK100, EXCG_ID_DVSN_CD, INQR_DVSN,
-    INQR_DVSN_1, INQR_DVSN_2, INQR_DVSN_3, INQR_END_DT, INQR_STRT_DT, KRX_FWDG_ORD_ORGNO, ODNO,
-    ORD_DVSN, ORD_GNO_BRNO, ORD_QTY, ORD_UNPR, ORGN_ODNO, PDNO, QTY_ALL_ORD_YN, RVSE_CNCL_DVSN_CD,
-    SLL_BUY_DVSN_CD,
+    ACNT_PRDT_CD, AFHR_FLPR_YN, CANO, CCLD_DVSN, CTX_AREA_FK100, CTX_AREA_NK100, EXCG_ID_DVSN_CD,
+    FNCG_AMT_AUTO_RDPT_YN, FUND_STTL_ICLD_YN, INQR_DVSN, INQR_DVSN_1, INQR_DVSN_2, INQR_DVSN_3,
+    INQR_END_DT, INQR_STRT_DT, KRX_FWDG_ORD_ORGNO, ODNO, OFL_YN, ORD_DVSN, ORD_GNO_BRNO, ORD_QTY,
+    ORD_UNPR, ORGN_ODNO, PDNO, PRCS_DVSN, QTY_ALL_ORD_YN, RVSE_CNCL_DVSN_CD, SLL_BUY_DVSN_CD,
+    UNPR_DVSN,
 };
 use super::*;
 use crate::Client;
@@ -311,6 +312,117 @@ async fn inquire_daily_ccld_sends_query() {
             (CTX_AREA_NK100.to_string(), "".to_string()),
             (EXCG_ID_DVSN_CD.to_string(), "KRX".to_string())
         ]
+    );
+}
+
+#[tokio::test]
+async fn inquire_balance_sends_query_and_reads_cash_summary() {
+    let http_client = MockHttpClient::new(
+        Response::new(
+            200,
+            r#"{
+                "rt_cd": "0",
+                "msg_cd": "MCA00000",
+                "msg1": "ok",
+                "ctx_area_fk100": "fk",
+                "ctx_area_nk100": "nk",
+                "output1": [{"pdno": "005930", "hldg_qty": "2"}],
+                "output2": [{"dnca_tot_amt": "1000000"}]
+            }"#,
+        )
+        .with_headers([Header::new("tr_cont", "M")]),
+    );
+    let client = mock_client(&http_client);
+    let access_token = AccessToken::new("access-token-value");
+    let request = InquireBalanceRequest::new("N", "01", "01", "N", "N", "00").unwrap();
+
+    let response = client
+        .domestic_stock()
+        .trading()
+        .inquire_balance(&access_token, request)
+        .await
+        .unwrap();
+
+    assert!(response.continuation.has_next());
+    assert_eq!(response.continuation.ctx_area_fk.as_deref(), Some("fk"));
+    assert_eq!(response.continuation.ctx_area_nk.as_deref(), Some("nk"));
+    assert_eq!(
+        response
+            .output2
+            .get(0)
+            .and_then(|output| output.get("dnca_tot_amt"))
+            .and_then(Value::as_str),
+        Some("1000000")
+    );
+
+    let request = only_request(&http_client);
+    assert_eq!(request.method(), Method::Get);
+    assert_eq!(
+        request.url(),
+        "https://openapivts.koreainvestment.com:29443/uapi/domestic-stock/v1/trading/inquire-balance"
+    );
+    assert_header(&request, "tr_id", INQUIRE_BALANCE_VIRTUAL_TR_ID);
+    assert_eq!(
+        request.query_params(),
+        &[
+            (CANO.to_string(), "12345678".to_string()),
+            (ACNT_PRDT_CD.to_string(), "01".to_string()),
+            (AFHR_FLPR_YN.to_string(), "N".to_string()),
+            (OFL_YN.to_string(), "".to_string()),
+            (INQR_DVSN.to_string(), "01".to_string()),
+            (UNPR_DVSN.to_string(), "01".to_string()),
+            (FUND_STTL_ICLD_YN.to_string(), "N".to_string()),
+            (FNCG_AMT_AUTO_RDPT_YN.to_string(), "N".to_string()),
+            (PRCS_DVSN.to_string(), "00".to_string()),
+            (CTX_AREA_FK100.to_string(), "".to_string()),
+            (CTX_AREA_NK100.to_string(), "".to_string())
+        ]
+    );
+}
+
+#[tokio::test]
+async fn inquire_balance_sends_next_page_marker() {
+    let http_client = MockHttpClient::new(Response::new(
+        200,
+        r#"{
+            "rt_cd": "0",
+            "msg_cd": "MCA00000",
+            "msg1": "ok",
+            "output1": [],
+            "output2": []
+        }"#,
+    ));
+    let client = mock_client(&http_client);
+    let access_token = AccessToken::new("access-token-value");
+    let continuation = Continuation {
+        tr_cont: Some("M".to_string()),
+        ctx_area_fk: Some("fk".to_string()),
+        ctx_area_nk: Some("nk".to_string()),
+    }
+    .next_request()
+    .unwrap();
+    let request = InquireBalanceRequest::new("N", "01", "01", "N", "N", "00")
+        .unwrap()
+        .with_continuation(continuation);
+
+    client
+        .domestic_stock()
+        .trading()
+        .inquire_balance(&access_token, request)
+        .await
+        .unwrap();
+
+    let request = only_request(&http_client);
+    assert_header(&request, "tr_cont", "N");
+    assert!(
+        request
+            .query_params()
+            .contains(&(CTX_AREA_FK100.to_string(), "fk".to_string()))
+    );
+    assert!(
+        request
+            .query_params()
+            .contains(&(CTX_AREA_NK100.to_string(), "nk".to_string()))
     );
 }
 

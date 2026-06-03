@@ -264,6 +264,161 @@ async fn inquire_ccnl_sends_next_page_marker() {
     );
 }
 
+#[tokio::test]
+async fn inquire_balance_sends_query_and_reads_continuation() {
+    let http_client = MockHttpClient::new(
+        Response::new(
+            200,
+            r#"{
+                "rt_cd": "0",
+                "msg_cd": "MCA00000",
+                "msg1": "ok",
+                "ctx_area_fk200": "fk",
+                "ctx_area_nk200": "nk",
+                "output1": {"frcr_pchs_amt1": "100.00"},
+                "output2": [{"ovrs_pdno": "AAPL", "ovrs_cblc_qty": "1"}]
+            }"#,
+        )
+        .with_headers([Header::new("tr_cont", "M")]),
+    );
+    let client = mock_client(&http_client);
+    let access_token = AccessToken::new("access-token-value");
+    let request = InquireBalanceRequest::new("NASD", "USD").unwrap();
+
+    let response = client
+        .overseas_stock()
+        .trading()
+        .inquire_balance(&access_token, request)
+        .await
+        .unwrap();
+
+    assert!(response.continuation.has_next());
+    assert_eq!(response.continuation.ctx_area_fk.as_deref(), Some("fk"));
+    assert_eq!(response.continuation.ctx_area_nk.as_deref(), Some("nk"));
+    assert_eq!(
+        response
+            .output2
+            .get(0)
+            .and_then(|output| output.get("ovrs_pdno"))
+            .and_then(Value::as_str),
+        Some("AAPL")
+    );
+
+    let request = only_request(&http_client);
+    assert_eq!(request.method(), Method::Get);
+    assert_eq!(
+        request.url(),
+        "https://openapivts.koreainvestment.com:29443/uapi/overseas-stock/v1/trading/inquire-balance"
+    );
+    assert_header(&request, "tr_id", INQUIRE_BALANCE_VIRTUAL_TR_ID);
+    assert_eq!(
+        request.query_params(),
+        &[
+            (CANO.to_string(), "12345678".to_string()),
+            (ACNT_PRDT_CD.to_string(), "01".to_string()),
+            ("OVRS_EXCG_CD".to_string(), "NASD".to_string()),
+            ("TR_CRCY_CD".to_string(), "USD".to_string()),
+            ("CTX_AREA_FK200".to_string(), "".to_string()),
+            ("CTX_AREA_NK200".to_string(), "".to_string())
+        ]
+    );
+}
+
+#[tokio::test]
+async fn inquire_balance_sends_next_page_marker() {
+    let http_client = MockHttpClient::new(Response::new(
+        200,
+        r#"{
+            "rt_cd": "0",
+            "msg_cd": "MCA00000",
+            "msg1": "ok",
+            "output1": {},
+            "output2": []
+        }"#,
+    ));
+    let client = mock_client(&http_client);
+    let access_token = AccessToken::new("access-token-value");
+    let continuation = Continuation {
+        tr_cont: Some("M".to_string()),
+        ctx_area_fk: Some("fk".to_string()),
+        ctx_area_nk: Some("nk".to_string()),
+    }
+    .next_request()
+    .unwrap();
+    let request = InquireBalanceRequest::new("NASD", "USD")
+        .unwrap()
+        .with_continuation(continuation);
+
+    client
+        .overseas_stock()
+        .trading()
+        .inquire_balance(&access_token, request)
+        .await
+        .unwrap();
+
+    let request = only_request(&http_client);
+    assert_header(&request, "tr_cont", "N");
+    assert!(
+        request
+            .query_params()
+            .contains(&("CTX_AREA_FK200".to_string(), "fk".to_string()))
+    );
+    assert!(
+        request
+            .query_params()
+            .contains(&("CTX_AREA_NK200".to_string(), "nk".to_string()))
+    );
+}
+
+#[tokio::test]
+async fn inquire_present_balance_sends_query() {
+    let http_client = MockHttpClient::new(Response::new(
+        200,
+        r#"{
+            "rt_cd": "0",
+            "msg_cd": "MCA00000",
+            "msg1": "ok",
+            "output1": [{"ovrs_pdno": "AAPL"}],
+            "output2": [{"crcy_cd": "USD"}],
+            "output3": {"tot_asst_amt": "1000.00"}
+        }"#,
+    ));
+    let client = mock_client(&http_client);
+    let access_token = AccessToken::new("access-token-value");
+    let request = InquirePresentBalanceRequest::new("01", "000", "00", "00").unwrap();
+
+    let response = client
+        .overseas_stock()
+        .trading()
+        .inquire_present_balance(&access_token, request)
+        .await
+        .unwrap();
+
+    assert_eq!(
+        response.output3.get("tot_asst_amt").and_then(Value::as_str),
+        Some("1000.00")
+    );
+
+    let request = only_request(&http_client);
+    assert_eq!(request.method(), Method::Get);
+    assert_eq!(
+        request.url(),
+        "https://openapivts.koreainvestment.com:29443/uapi/overseas-stock/v1/trading/inquire-present-balance"
+    );
+    assert_header(&request, "tr_id", INQUIRE_PRESENT_BALANCE_VIRTUAL_TR_ID);
+    assert_eq!(
+        request.query_params(),
+        &[
+            (CANO.to_string(), "12345678".to_string()),
+            (ACNT_PRDT_CD.to_string(), "01".to_string()),
+            ("WCRC_FRCR_DVSN_CD".to_string(), "01".to_string()),
+            ("NATN_CD".to_string(), "000".to_string()),
+            ("TR_MKET_CD".to_string(), "00".to_string()),
+            ("INQR_DVSN_CD".to_string(), "00".to_string())
+        ]
+    );
+}
+
 fn ok_output_response() -> Response {
     Response::new(
         200,

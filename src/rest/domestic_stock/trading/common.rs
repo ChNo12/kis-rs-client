@@ -32,6 +32,12 @@ pub(crate) const INQR_DVSN: &str = "INQR_DVSN";
 pub(crate) const INQR_DVSN_3: &str = "INQR_DVSN_3";
 pub(crate) const ORD_GNO_BRNO: &str = "ORD_GNO_BRNO";
 pub(crate) const ODNO: &str = "ODNO";
+pub(crate) const AFHR_FLPR_YN: &str = "AFHR_FLPR_YN";
+pub(crate) const OFL_YN: &str = "OFL_YN";
+pub(crate) const UNPR_DVSN: &str = "UNPR_DVSN";
+pub(crate) const FUND_STTL_ICLD_YN: &str = "FUND_STTL_ICLD_YN";
+pub(crate) const FNCG_AMT_AUTO_RDPT_YN: &str = "FNCG_AMT_AUTO_RDPT_YN";
+pub(crate) const PRCS_DVSN: &str = "PRCS_DVSN";
 
 #[derive(Clone, Copy, Debug, Eq, PartialEq)]
 pub enum OrderSide {

@@ -106,6 +106,10 @@ pub(crate) struct Endpoint {
 #[derive(Debug, Deserialize)]
 pub(crate) struct RawApiResponse {
     pub output: Option<Value>,
+    pub output1: Option<Value>,
+    pub output2: Option<Value>,
+    pub output3: Option<Value>,
+    pub output4: Option<Value>,
     pub ctx_area_fk: Option<String>,
     pub ctx_area_nk: Option<String>,
     pub ctx_area_fk200: Option<String>,
@@ -115,6 +119,10 @@ pub(crate) struct RawApiResponse {
 #[derive(Clone, Debug, PartialEq)]
 pub(crate) struct RawResponse {
     pub output: Option<Value>,
+    pub output1: Option<Value>,
+    pub output2: Option<Value>,
+    pub output3: Option<Value>,
+    pub output4: Option<Value>,
     pub continuation: Continuation,
 }
 
@@ -185,6 +193,37 @@ pub(crate) fn require_output(
         .ok_or_else(|| Error::parse(format!("{parse_context} response missing output")))?;
 
     Ok((output, response.continuation))
+}
+
+pub(crate) fn require_output_pair(
+    response: RawResponse,
+    parse_context: &'static str,
+) -> Result<(Value, Value, Continuation)> {
+    let output1 = response
+        .output1
+        .ok_or_else(|| Error::parse(format!("{parse_context} response missing output1")))?;
+    let output2 = response
+        .output2
+        .ok_or_else(|| Error::parse(format!("{parse_context} response missing output2")))?;
+
+    Ok((output1, output2, response.continuation))
+}
+
+pub(crate) fn require_output_triple(
+    response: RawResponse,
+    parse_context: &'static str,
+) -> Result<(Value, Value, Value, Continuation)> {
+    let output1 = response
+        .output1
+        .ok_or_else(|| Error::parse(format!("{parse_context} response missing output1")))?;
+    let output2 = response
+        .output2
+        .ok_or_else(|| Error::parse(format!("{parse_context} response missing output2")))?;
+    let output3 = response
+        .output3
+        .ok_or_else(|| Error::parse(format!("{parse_context} response missing output3")))?;
+
+    Ok((output1, output2, output3, response.continuation))
 }
 
 fn build_get_request<T>(
@@ -279,6 +318,10 @@ fn parse_response(response: Response, parse_context: &'static str) -> Result<Raw
 
     Ok(RawResponse {
         output: body.output,
+        output1: body.output1,
+        output2: body.output2,
+        output3: body.output3,
+        output4: body.output4,
         continuation,
     })
 }

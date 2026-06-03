@@ -24,9 +24,10 @@ pub use ranking::{
     FluctuationResponse,
 };
 pub use trading::{
-    AllQuantityOrder, InquireDailyCcldPeriod, InquireDailyCcldRequest, InquireDailyCcldResponse,
-    InquirePsblRvsecnclRequest, InquirePsblRvsecnclResponse, OrderCashRequest, OrderCashResponse,
-    OrderRvsecnclRequest, OrderRvsecnclResponse, OrderSide, ReviseCancel,
+    AllQuantityOrder, InquireBalanceRequest, InquireBalanceResponse, InquireDailyCcldPeriod,
+    InquireDailyCcldRequest, InquireDailyCcldResponse, InquirePsblRvsecnclRequest,
+    InquirePsblRvsecnclResponse, OrderCashRequest, OrderCashResponse, OrderRvsecnclRequest,
+    OrderRvsecnclResponse, OrderSide, ReviseCancel,
 };
 
 use crate::client::Client;

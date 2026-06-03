@@ -17,6 +17,7 @@
   - 당일 분봉: `/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice`
   - 이전일자 분봉: `/uapi/domestic-stock/v1/quotations/inquire-time-dailychartprice`
 - 국내주식 주문/조회:
+  - 주식잔고조회: `/uapi/domestic-stock/v1/trading/inquire-balance`
   - 현금 주문: `/uapi/domestic-stock/v1/trading/order-cash`
   - 주문 정정/취소: `/uapi/domestic-stock/v1/trading/order-rvsecncl`
   - 정정취소 가능주문조회: `/uapi/domestic-stock/v1/trading/inquire-psbl-rvsecncl`
@@ -25,6 +26,8 @@
   - 미국 `NASD`, `NYSE`, `AMEX` 주문
   - 미국 주문 정정/취소
   - 해외 주문체결내역 조회
+  - 해외주식 잔고 조회
+  - 해외주식 체결기준현재잔고 조회
 - WebSocket:
   - 국내 실시간 가격 수신 구독 메시지, 수신 frame parser, typed view
   - 국내 실시간 체결통보 수신, AES-256-CBC/base64 복호화, typed view

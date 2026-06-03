@@ -21,9 +21,9 @@ Updated: 2026-05-11
 
 | Status | Count |
 |---|---:|
-| Implemented domestic REST | 15 |
-| Implemented overseas REST | 3 |
-| Remaining/deferred domestic catalog entries | 85 |
+| Implemented domestic REST | 16 |
+| Implemented overseas REST | 5 |
+| Remaining/deferred domestic catalog entries | 84 |
 | Total official domestic_stock sample folders | 100 |
 
 ## Implemented Domestic REST
@@ -41,6 +41,7 @@ Updated: 2026-05-11
 | `inquire_price` | `inquire_price` | `domestic_stock().quotations()` | `/uapi/domestic-stock/v1/quotations/inquire-price` | `FHKST01010100` |
 | `inquire_time_dailychartprice` | `inquire_time_daily_chart_price` | `domestic_stock().quotations()` | `/uapi/domestic-stock/v1/quotations/inquire-time-dailychartprice` | `FHKST03010230` |
 | `inquire_time_itemchartprice` | `inquire_time_item_chart_price` | `domestic_stock().quotations()` | `/uapi/domestic-stock/v1/quotations/inquire-time-itemchartprice` | `FHKST03010200` |
+| `inquire_balance` | `inquire_balance` | `domestic_stock().trading()` | `/uapi/domestic-stock/v1/trading/inquire-balance` | `TTTC8434R`/`VTTC8434R` |
 | `inquire_daily_ccld` | `inquire_daily_ccld` | `domestic_stock().trading()` | `/uapi/domestic-stock/v1/trading/inquire-daily-ccld` | `TTTC0081R`/`VTTC0081R`, `CTSC9215R`/`VTSC9215R` |
 | `inquire_psbl_rvsecncl` | `inquire_psbl_rvsecncl` | `domestic_stock().trading()` | `/uapi/domestic-stock/v1/trading/inquire-psbl-rvsecncl` | `TTTC0084R`/`VTTC0084R` |
 | `order_cash` | `order_cash` | `domestic_stock().trading()` | `/uapi/domestic-stock/v1/trading/order-cash` | `TTTC0011U`/`TTTC0012U`, `VTTC0011U`/`VTTC0012U` |
@@ -48,13 +49,15 @@ Updated: 2026-05-11
 
 ## Implemented Overseas REST
 
-v1은 미국 `NASD`, `NYSE`, `AMEX`만 지원한다.
+주문 API는 미국 `NASD`, `NYSE`, `AMEX`만 지원한다. 잔고성 조회 API는 KIS 원문 거래소/국가/통화 코드를 문자열로 전달한다.
 
 | Public API | Module | Path | TR ID |
 |---|---|---|---|
 | `order` | `overseas_stock().trading()` | `/uapi/overseas-stock/v1/trading/order` | `TTTT1002U`/`VTTT1002U`, `TTTT1006U`/`VTTT1006U` |
 | `order_rvsecncl` | `overseas_stock().trading()` | `/uapi/overseas-stock/v1/trading/order-rvsecncl` | `TTTT1004U`/`VTTT1004U` |
 | `inquire_ccnl` | `overseas_stock().trading()` | `/uapi/overseas-stock/v1/trading/inquire-ccnl` | `TTTS3035R`/`VTTS3035R` |
+| `inquire_balance` | `overseas_stock().trading()` | `/uapi/overseas-stock/v1/trading/inquire-balance` | `TTTS3012R`/`VTTS3012R` |
+| `inquire_present_balance` | `overseas_stock().trading()` | `/uapi/overseas-stock/v1/trading/inquire-present-balance` | `CTRP6504R`/`VTRP6504R` |
 
 ## Remaining Domestic By Suggested Module
 
@@ -163,7 +166,6 @@ v1은 미국 `NASD`, `NYSE`, `AMEX`만 지원한다.
 | Status | Sample Folder | Notes |
 |---|---|---|
 | Planned-sensitive | `inquire_account_balance` | 계좌 잔고성 조회 |
-| Planned-sensitive | `inquire_balance` | 잔고 조회 |
 | Planned-sensitive | `inquire_balance_rlz_pl` | 실현손익/잔고성 조회 |
 | Planned-sensitive | `inquire_credit_psamount` | 신용 가능금액 |
 | Planned-sensitive | `inquire_period_profit` | 기간 손익 |
@@ -184,7 +186,7 @@ v1은 미국 `NASD`, `NYSE`, `AMEX`만 지원한다.
 | Area | Status | Notes |
 |---|---|---|
 | Broad domestic REST expansion | Deferred | 순위/시세분석/종목정보/계좌성 전체 확장은 focused v1 이후 검토한다. |
-| Overseas non-US expansion | Deferred | v1은 미국 `NASD`, `NYSE`, `AMEX`만 지원한다. |
+| Overseas non-US order/quotation expansion | Deferred | 주문/시세 v1은 미국 `NASD`, `NYSE`, `AMEX` 중심이다. 잔고성 조회는 KIS 원문 코드를 문자열로 전달한다. |
 
 ## Implementation Checklist
 
