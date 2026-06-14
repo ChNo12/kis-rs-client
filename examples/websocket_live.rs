@@ -113,12 +113,15 @@ fn print_data_frame(
             return;
         };
 
-        match cipher
-            .decrypt_base64(&frame.payload)
-            .and_then(|payload| DomesticExecutionNotice::parse(&payload))
-        {
-            Ok(notice) => println!("[domestic execution] {notice:?}"),
-            Err(error) => eprintln!("[domestic execution parse error] {error}"),
+        match cipher.decrypt_base64(&frame.payload) {
+            Ok(payload) => {
+                print_raw_execution_payload("domestic execution", &payload);
+                match DomesticExecutionNotice::parse(&payload) {
+                    Ok(notice) => println!("[domestic execution] {notice:?}"),
+                    Err(error) => eprintln!("[domestic execution parse error] {error}"),
+                }
+            }
+            Err(error) => eprintln!("[domestic execution decrypt error] {error}"),
         }
         return;
     }
@@ -129,12 +132,15 @@ fn print_data_frame(
             return;
         };
 
-        match cipher
-            .decrypt_base64(&frame.payload)
-            .and_then(|payload| OverseasExecutionNotice::parse(&payload))
-        {
-            Ok(notice) => println!("[overseas execution] {notice:?}"),
-            Err(error) => eprintln!("[overseas execution parse error] {error}"),
+        match cipher.decrypt_base64(&frame.payload) {
+            Ok(payload) => {
+                print_raw_execution_payload("overseas execution", &payload);
+                match OverseasExecutionNotice::parse(&payload) {
+                    Ok(notice) => println!("[overseas execution] {notice:?}"),
+                    Err(error) => eprintln!("[overseas execution parse error] {error}"),
+                }
+            }
+            Err(error) => eprintln!("[overseas execution decrypt error] {error}"),
         }
         return;
     }
@@ -142,6 +148,24 @@ fn print_data_frame(
     println!(
         "[data] tr_id={} tr_type={} record_count={} payload={}",
         frame.tr_id, frame.tr_type, frame.record_count, frame.payload
+    );
+}
+
+#[cfg(all(feature = "reqwest-client", feature = "websocket-client"))]
+fn print_raw_execution_payload(label: &str, payload: &str) {
+    if env::var("KIS_DEBUG_EXECUTION_NOTICE_RAW").as_deref() != Ok("true") {
+        return;
+    }
+
+    let fields = payload
+        .split('^')
+        .enumerate()
+        .map(|(index, value)| format!("{index}:{value:?}"))
+        .collect::<Vec<_>>()
+        .join(", ");
+    println!(
+        "[{label} raw] field_count={} [{fields}]",
+        payload.split('^').count()
     );
 }
 
